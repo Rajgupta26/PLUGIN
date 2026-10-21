@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Jewelix AI Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com/3.4.5"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ivory: '#FBF9F5',
+          ink: '#181715',
+          gold: { DEFAULT: '#C8A152', light: '#E6CE93', deep: '#A9843B' },
+          line: '#EADEC9',
+        },
+        fontFamily: {
+          serif: ['"Playfair Display"', 'serif'],
+          sans: ['Inter', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'monospace'],
+        },
+      },
+    },
+  };
+</script>
+<style>
+  body { background: #FBF9F5; }
+  .gold-grad { background: linear-gradient(135deg, #C8A152 0%, #E6CE93 55%, #C8A152 100%); }
+  .gold-text { background: linear-gradient(135deg, #A9843B, #C8A152 40%, #E6CE93); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .shimmer { background: linear-gradient(100deg, #f4eee3 30%, #fbf7ef 50%, #f4eee3 70%); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  .fade-in { animation: fade .6s ease both; }
+  @keyframes fade { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
+  .sel { border-color: #C8A152 !important; box-shadow: 0 0 0 3px rgba(200,161,82,.18); background: #FFFDF8 !important; }
+  /* Click feedback on every button */
+  button, a { transition: transform .12s ease, background-color .15s ease, border-color .15s ease, box-shadow .15s ease; }
+  button:not(:disabled):active, a:active { transform: scale(.97); }
+  button:focus-visible, a:focus-visible { outline: 2px solid #C8A152; outline-offset: 2px; }
+  .scan-line { position: absolute; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, #C8A152, transparent); box-shadow: 0 0 18px 4px rgba(200,161,82,.55); animation: scan 1.1s ease-in-out infinite alternate; }
+  @keyframes scan { from { top: 4%; } to { top: 94%; } }
+  /* Simulated metal recolouring */
+  .metal-yellow { filter: sepia(.35) saturate(1.7) hue-rotate(-6deg) brightness(1.02); }
+  .metal-rose   { filter: sepia(.2) saturate(1.05) hue-rotate(-14deg) brightness(1.03); }
+  .metal-white  { filter: grayscale(1) brightness(1.08) contrast(1.06); }
+  .soft-mask { -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent 100%); mask-image: radial-gradient(closest-side, #000 72%, transparent 100%); }
+  /* !important so the hover colour never hides the selected tab */
+  .tab-on { background: #181715 !important; color: #fff; box-shadow: 0 6px 18px -8px rgba(24,23,21,.6); }
+  .tab-on:hover { background: #000 !important; }
+  .tab-on .tab-sub { color: #E6CE93; }
+</style>
+</head>
+<body class="font-sans text-ink antialiased">
+  <!-- Header -->
+  <header class="sticky top-0 z-20 px-4 pt-4 sm:px-6">
+    <div class="mx-auto flex max-w-7xl items-center justify-between gap-3 rounded-2xl border border-line/70 bg-white/75 px-4 py-3 backdrop-blur sm:px-6">
+      <div class="flex items-center gap-3">
+        <img src="logo.png" alt="Jewelix" class="h-11 w-auto" />
+        <span class="font-serif text-2xl tracking-wide">Jewelix</span>
+        <span class="hidden rounded-full border border-gold/50 bg-gold-light/20 px-3 py-1 font-mono text-[10px] tracking-[.18em] text-gold-deep sm:inline">AI STUDIO PLUGIN</span>
+      </div>
+      <div class="hidden items-center gap-2 rounded-full border border-line bg-white px-4 py-1.5 text-xs md:flex">
+        <span class="relative flex h-2 w-2"><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"></span><span class="relative h-2 w-2 rounded-full bg-emerald-500"></span></span>
+        <span class="font-medium">ERP Connected</span><span class="text-line">|</span><span class="text-ink/60">Unit 1 · Zaveri Bazaar</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="hidden text-right sm:block"><div class="text-xs font-medium">Rajesh Mehta</div><div class="text-[11px] text-ink/50">Mehta Gold Works</div></div>
+        <div class="grid h-9 w-9 place-items-center rounded-full bg-ink text-xs font-semibold text-gold-light">RM</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 pb-16 pt-8 sm:px-6">
+    <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p class="mb-2 font-mono text-xs tracking-[.2em] text-ink/60"><span class="text-gold">[AI]</span> STUDIO</p>
+        <h1 class="font-serif text-4xl leading-tight sm:text-5xl">From photo to showroom, <em class="gold-text">in seconds.</em></h1>
+      </div>
+      <p class="max-w-sm text-sm leading-relaxed text-ink/60">Clean up product shots, try pieces on a model, create new designs and find matches in your stock.</p>
+    </div>
+
+    <!-- Tool tabs -->
+    <nav id="tabs" class="mb-6 grid grid-cols-2 gap-2 rounded-2xl border border-line bg-white p-1.5 md:grid-cols-4">
+      <button data-tab="enhance" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
+        <span class="text-lg">✨</span><span><span class="block text-sm font-semibold">Enhance</span><span class="tab-sub block text-[11px] text-ink/50">White background + metal</span></span>
+      </button>
+      <button data-tab="model" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
+        <span class="text-lg">👤</span><span><span class="block text-sm font-semibold">Show on Model</span><span class="tab-sub block text-[11px] text-ink/50">Neck, ears, hands</span></span>
+      </button>
+      <button data-tab="blend" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
+        <span class="text-lg">⧉</span><span><span class="block text-sm font-semibold">Blend</span><span class="tab-sub block text-[11px] text-ink/50">Two designs → one new</span></span>
+      </button>
+      <button data-tab="search" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
+        <span class="text-lg">⌕</span><span><span class="block text-sm font-semibold">Inventory Match</span><span class="tab-sub block text-[11px] text-ink/50">Find it in your stock</span></span>
+      </button>
+    </nav>
+
+    <!-- ================= STUDIO (Enhance + Model) ================= -->
+    <section id="view-studio" class="grid gap-6 lg:grid-cols-[380px_1fr]">
+      <div class="space-y-5">
+        <div class="rounded-2xl border border-line bg-white p-5">
+          <div class="mb-4 flex items-center gap-3">
+            <span class="grid h-7 w-7 place-items-center rounded-full bg-ink font-mono text-xs text-gold-light">01</span>
+            <h2 class="font-serif text-lg">Upload Jewellery Photo</h2>
+          </div>
+          <div data-drop="studio"></div>
+        </div>
+
+        <div class="rounded-2xl border border-line bg-white p-5">
+          <div class="mb-4 flex items-center gap-3">
+            <span class="grid h-7 w-7 place-items-center rounded-full bg-ink font-mono text-xs text-gold-light">02</span>
+            <h2 class="font-serif text-lg" id="step2Title">Options</h2>
+          </div>
+          <label class="mb-1.5 block font-mono text-[10px] tracking-[.18em] text-ink/50">JEWELLERY TYPE</label>
+          <div id="typeChips" class="mb-4 grid grid-cols-4 gap-1.5"></div>
+          <div id="modelOpts">
+            <label class="mb-1.5 block font-mono text-[10px] tracking-[.18em] text-ink/50" for="preset">MODEL / LIGHTING PRESET</label>
+            <select id="preset" class="mb-4 w-full rounded-xl border border-line bg-ivory px-4 py-3 text-sm outline-none focus:border-gold">
+              <option>Warm Indian / Bridal Studio</option>
+              <option>Fair Editorial</option>
+              <option>Natural Daylight</option>
+            </select>
+          </div>
+          <button id="runBtn" class="gold-grad flex w-full items-center justify-center gap-2 rounded-xl px-5 py-4 text-base font-semibold text-ink shadow-[0_8px_24px_-8px_rgba(200,161,82,.7)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"></button>
+          <p id="runHint" class="mt-2 text-center text-[11px] text-ink/50"></p>
+        </div>
+      </div>
+
+      <!-- Output -->
+      <div class="rounded-2xl border border-line bg-white p-5 sm:p-6">
+        <div class="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-line pb-4">
+          <div>
+            <p class="font-mono text-[10px] tracking-[.18em] text-ink/50">OUTPUT</p>
+            <h2 class="font-serif text-2xl" id="outTitle">Studio Output</h2>
+          </div>
+          <div id="outMeta" class="text-right text-xs text-ink/60"></div>
+        </div>
+        <div class="grid gap-4 md:grid-cols-2">
+          <div>
+            <div class="mb-2 flex items-center justify-between"><span class="font-mono text-[10px] tracking-[.18em] text-ink/60">ORIGINAL PHOTO</span><span id="inTag" class="rounded bg-ivory px-2 py-0.5 font-mono text-[10px] text-ink/50">—</span></div>
+            <div id="inBox" class="relative grid aspect-square place-items-center overflow-hidden rounded-xl border border-line bg-ivory"></div>
+          </div>
+          <div>
+            <div class="mb-2 flex items-center justify-between"><span class="font-mono text-[10px] tracking-[.18em] text-ink/60">AI RESULT</span><span id="outTag" class="rounded bg-ivory px-2 py-0.5 font-mono text-[10px] text-ink/50">—</span></div>
+            <div id="outBox" class="relative aspect-square overflow-hidden rounded-xl border border-line bg-ivory"></div>
+          </div>
+        </div>
+
+        <!-- Metal recolour (after Enhance) -->
+        <div id="metalBar" class="mt-5 hidden rounded-xl border border-line bg-ivory p-4">
+          <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p class="font-mono text-[10px] tracking-[.18em] text-ink/60">SHOW YOUR CLIENT IN ANOTHER METAL</p>
+            <button id="toModel" class="rounded-full border border-ink/80 px-3 py-1 text-xs font-medium transition hover:bg-ink hover:text-white">Show on model ✨</button>
+          </div>
+          <div id="metalChips" class="grid grid-cols-2 gap-2 sm:grid-cols-4"></div>
+        </div>
+
+        <div data-actions="studio"></div>
+      </div>
+    </section>
+
+    <!-- ================= BLEND ================= -->
+    <section id="view-blend" class="hidden">
+      <div class="grid items-stretch gap-4 lg:grid-cols-[1fr_auto_1fr_auto_1.2fr]">
+        <div class="rounded-2xl border border-line bg-white p-5">
+          <p class="mb-3 font-mono text-[10px] tracking-[.18em] text-ink/60"><span class="text-gold">A</span> · FIRST DESIGN</p>
+          <div data-drop="blendA"></div>
+        </div>
+        <div class="grid place-items-center font-serif text-3xl text-gold">+</div>
+        <div class="rounded-2xl border border-line bg-white p-5">
+          <p class="mb-3 font-mono text-[10px] tracking-[.18em] text-ink/60"><span class="text-gold">B</span> · SECOND DESIGN</p>
+          <div data-drop="blendB"></div>
+        </div>
+        <div class="grid place-items-center font-serif text-3xl text-gold">=</div>
+        <div class="flex flex-col rounded-2xl border border-line bg-white p-5">
+          <div class="mb-3 flex items-center justify-between"><p class="font-mono text-[10px] tracking-[.18em] text-ink/60">NEW CREATION</p><span id="blendTag" class="rounded bg-ivory px-2 py-0.5 font-mono text-[10px] text-ink/50">—</span></div>
+          <div id="blendBox" class="relative aspect-square overflow-hidden rounded-xl border border-line bg-ivory"></div>
+          <label class="mt-4 flex items-center justify-between font-mono text-[10px] tracking-[.18em] text-ink/50"><span>MORE OF A</span><span id="mixVal">50 / 50</span><span>MORE OF B</span></label>
+          <input id="mix" type="range" min="20" max="80" value="50" class="mt-1 w-full accent-[#C8A152]" />
+          <button id="blendBtn" class="gold-grad mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-semibold text-ink transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50">Blend ✨</button>
+        </div>
+      </div>
+      <div class="mt-4 rounded-2xl border border-line bg-white p-5"><div data-actions="blend" class="-mt-6"></div></div>
+    </section>
+
+    <!-- ================= INVENTORY SEARCH ================= -->
+    <section id="view-search" class="hidden grid gap-6 lg:grid-cols-[380px_1fr]">
+      <div class="space-y-5">
+        <div class="rounded-2xl border border-line bg-white p-5">
+          <div class="mb-4 flex items-center gap-3">
+            <span class="grid h-7 w-7 place-items-center rounded-full bg-ink font-mono text-xs text-gold-light">01</span>
+            <h2 class="font-serif text-lg">Client's Reference Photo</h2>
+          </div>
+          <p class="-mt-2 mb-3 text-xs text-ink/50">Any photo works: a WhatsApp forward, a screenshot, a piece held in hand.</p>
+          <div data-drop="search"></div>
+          <button id="searchBtn" class="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-ink px-5 py-4 font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50">⌕ Search my inventory</button>
+          <p class="mt-2 text-center text-[11px] text-ink/50">Searches your Jewelix ERP stock</p>
+        </div>
+      </div>
+      <div class="rounded-2xl border border-line bg-white p-5 sm:p-6">
+        <div class="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-line pb-4">
+          <div><p class="font-mono text-[10px] tracking-[.18em] text-ink/50">RESULTS</p><h2 class="font-serif text-2xl">Inventory Match</h2></div>
+          <span id="matchBadge" class="hidden rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">● Match found</span>
+        </div>
+        <div id="searchOut"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="pointer-events-none fixed bottom-6 left-1/2 z-30 -translate-x-1/2 translate-y-4 rounded-full bg-ink px-5 py-2.5 text-sm text-white opacity-0 transition"></div>
+
+<script>
+/* ============ Mock data ============ */
+const MODEL_PHOTO = 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?auto=format&fit=crop&w=900&h=900&q=80';
+
+const TYPES = [['necklace', 'Necklace'], ['earrings', 'Earrings'], ['ring', 'Ring'], ['bracelet', 'Bracelet']];
+const METALS = [['original', 'Original', ''], ['yellow', 'Yellow gold', 'metal-yellow'], ['rose', 'Rose gold', 'metal-rose'], ['white', 'White gold', 'metal-white']];
+const MSGS = {
+  enhance: ['Detecting jewellery edges…', 'Removing background…', 'Relighting metal & stones…'],
+  model: ['Finding placement on model…', 'Matching skin tone & lighting…', 'Rendering shadows…'],
+  blend: ['Reading both designs…', 'Merging motifs…', 'Rendering new creation…'],
+  search: ['Reading shape & motif…', 'Comparing with stock photos…', 'Ranking matches…'],
+};
+
+/* ============ State ============ */
+const state = {
+  tab: 'enhance',
+  uploads: { studio: null, blendA: null, blendB: null, search: null },
+  type: 'necklace', preset: 'Warm Indian / Bridal Studio',
+  studio: { status: 'idle', kind: null, metal: 'original' },  // kind: 'enhance' | 'model'
+  blend: { status: 'idle', mix: 50 },
+  search: { status: 'idle' },
+  attached: { studio: false, blend: false },
+};
+
+const $ = (id) => document.getElementById(id);
+const busy = () => [state.studio, state.blend, state.search].some(s => s.status === 'loading');
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg;
+  t.classList.remove('opacity-0', 'translate-y-4');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('opacity-0', 'translate-y-4'), 2200);
+}
+
+function loader(box, kind) {
+  box.innerHTML = `<div class="shimmer absolute inset-0"></div><div class="relative grid h-full place-items-center p-6 text-center"><div>
+    <div class="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-gold-light border-t-gold-deep"></div>
+    <div class="load-msg text-sm font-medium">${MSGS[kind][0]}</div>
+    <div class="mx-auto mt-3 h-1 w-40 overflow-hidden rounded-full bg-line"><div class="load-bar gold-grad h-full w-0 transition-all duration-[1900ms] ease-linear"></div></div></div></div>`;
+  requestAnimationFrame(() => requestAnimationFrame(() => { const b = box.querySelector('.load-bar'); if (b) b.style.width = '100%'; }));
+}
+
+// Fake 2-second AI call that cycles loading messages
+function simulate(box, kind, done) {
+  loader(box, kind);
+  let i = 0; const iv = setInterval(() => { const m = box.querySelector('.load-msg'); if (m) m.textContent = MSGS[kind][++i % 3]; }, 700);
+  setTimeout(() => { clearInterval(iv); done(); }, 2000);
+}
+
+const empty = (title, sub) => `<div class="grid h-full place-items-center p-6 text-center"><div>
+  <div class="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-full border border-gold/50 text-2xl">✨</div>
+  <div class="font-serif text-xl">${title}</div><p class="mt-1 text-xs text-ink/50">${sub}</p></div></div>`;
+
+/* ============ Shared: upload boxes ============ */
+function dropHTML(key) {
+  return `<label data-dz="${key}" class="relative flex min-h-[170px] cursor-pointer flex-col items-center justify-center gap-1 overflow-hidden rounded-xl border border-dashed border-gold/60 bg-ivory px-4 py-5 text-center transition hover:bg-gold-light/10">
+      <input type="file" accept="image/*" class="hidden" />
+      <div class="dz-empty flex flex-col items-center gap-1">
+        <div class="mb-1 grid h-11 w-11 place-items-center rounded-full border border-gold/50 bg-white">
+          <svg class="h-5 w-5 text-gold" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path d="M12 16V4m0 0-4 4m4-4 4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+        </div>
+        <span class="text-sm font-medium">Drag & drop a photo</span>
+        <span class="text-[11px] text-ink/50">or <u>browse</u> · PNG, JPG, WEBP</span>
+      </div>
+      <img class="dz-img hidden h-36 w-full object-contain" alt="Uploaded jewellery" />
+    </label>
+    <div class="dz-row mt-2 hidden items-center justify-between gap-2 rounded-lg bg-ivory px-3 py-1.5 text-xs">
+      <span class="dz-name truncate font-medium"></span>
+      <button class="dz-clear shrink-0 font-mono text-[10px] tracking-wider text-ink/50 hover:text-ink">REMOVE ✕</button>
+    </div>`;
+}
+
+function setUpload(key, up) {
+  const old = state.uploads[key];
+  if (old && old.blob) URL.revokeObjectURL(old.img);
+  state.uploads[key] = up;
+  if (key === 'studio') { state.studio = { status: 'idle', kind: null, metal: 'original' }; state.attached.studio = false; }
+  if (key.startsWith('blend')) { state.blend.status = 'idle'; state.attached.blend = false; }
+  if (key === 'search') state.search.status = 'idle';
+  render();
+}
+
+function wireDrop(key) {
+  const host = document.querySelector(`[data-drop="${key}"]`);
+  host.innerHTML = dropHTML(key);
+  const dz = host.querySelector('[data-dz]'), input = host.querySelector('input');
+  const take = (file) => {
+    if (!file || busy()) return;
+    if (!file.type.startsWith('image/')) return toast('Please upload an image (PNG, JPG, WEBP)');
+    setUpload(key, { name: file.name, img: URL.createObjectURL(file), blob: true });
+    toast('Photo uploaded');
+  };
+  input.addEventListener('change', e => { take(e.target.files[0]); e.target.value = ''; });
+  ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('sel'); }));
+  ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('sel'); }));
+  dz.addEventListener('drop', e => take(e.dataTransfer.files[0]));
+  host.querySelector('.dz-clear').addEventListener('click', e => { e.preventDefault(); if (!busy()) setUpload(key, null); });
+}
+
+function renderDrop(key) {
+  const host = document.querySelector(`[data-drop="${key}"]`), up = state.uploads[key];
+  host.querySelector('.dz-empty').classList.toggle('hidden', !!up);
+  const img = host.querySelector('.dz-img'); img.classList.toggle('hidden', !up); if (up) img.src = up.img;
+  const row = host.querySelector('.dz-row'); row.classList.toggle('hidden', !up); row.classList.toggle('flex', !!up);
+  if (up) host.querySelector('.dz-name').textContent = up.name;
+}
+
+/* ============ Shared: action bar ============ */
+function actionsHTML(key) {
+  return `<div class="act mt-6 grid gap-3 border-t border-line pt-5 sm:grid-cols-3">
+    <button class="act-attach flex items-center justify-center gap-2 rounded-xl bg-ink px-4 py-3 text-sm font-medium text-white transition hover:bg-black"></button>
+    <a class="act-wa flex items-center justify-center gap-2 rounded-xl bg-[#1FA855] px-4 py-3 text-sm font-medium text-white transition hover:bg-[#178F47]" target="_blank" rel="noopener">
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.3 14.2c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9 0-1.4.7-2 1-2.3.3-.3.6-.3.8-.3h.6c.2 0 .4 0 .6.5l.9 2.1c.1.2.1.4 0 .6l-.4.6-.4.4c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.5.3.1.2.1.7-.1 1.3Z"/></svg>
+      Share to WhatsApp</a>
+    <button class="act-dl flex items-center justify-center gap-2 rounded-xl border border-ink/80 px-4 py-3 text-sm font-medium transition hover:bg-ink hover:text-white">
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v12m0 0-4-4m4 4 4-4M4 20h16"/></svg>Download 4K</button>
+  </div>`;
+}
+function wireActions(key) {
+  const host = document.querySelector(`[data-actions="${key}"]`);
+  host.innerHTML = actionsHTML(key);
+  host.querySelector('.act-attach').addEventListener('click', () => {
+    state.attached[key] = !state.attached[key]; render();
+    toast(state.attached[key] ? 'Attached to job card' : 'Removed from job card');
+  });
+  host.querySelector('.act-dl').addEventListener('click', () => toast('Preparing 4K download… (demo)'));
+}
+function renderActions(key, ready, msg) {
+  const host = document.querySelector(`[data-actions="${key}"]`);
+  host.querySelector('.act').classList.toggle('opacity-40', !ready);
+  host.querySelector('.act').classList.toggle('pointer-events-none', !ready);
+  host.querySelector('.act-attach').innerHTML = state.attached[key]
+    ? `<svg class="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg> Attached to Job Card`
+    : `<svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12.5 12.5 21a5 5 0 0 1-7-7L14 5.5a3.5 3.5 0 0 1 5 5L10.5 19a2 2 0 0 1-3-3l8-8"/></svg> Attach to Job Card`;
+  host.querySelector('.act-wa').href = 'https://wa.me/?text=' + encodeURIComponent(msg);
+}
+
+/* ============ Studio: Enhance + Show on Model ============ */
+const metalClass = () => METALS.find(m => m[0] === state.studio.metal)[2];
+
+function enhancedHTML(up) {
+  // Stand-in until the AI backend exists: brighten the photo on white
+  const src = up.img;
+  const fx = 'style="filter:brightness(1.12) contrast(1.15) saturate(1.1);mix-blend-mode:multiply"';
+  return `<div class="fade-in grid h-full place-items-center bg-white p-6">
+    <div class="relative h-full w-full"><img src="${src}" ${fx} class="${metalClass()} h-full w-full object-contain transition" alt="Enhanced jewellery"/>
+    <div class="absolute bottom-[6%] left-1/2 h-3 w-1/2 -translate-x-1/2 rounded-full bg-black/10 blur-md"></div></div></div>`;
+}
+
+function modelHTML(up) {
+  const src = up.img;
+  const closeUp = (label) => `<div class="absolute bottom-3 right-3 w-[42%] overflow-hidden rounded-xl border-2 border-white bg-white shadow-lg">
+    <img src="${src}" class="${metalClass()} aspect-square w-full object-contain p-2" alt="Close-up"/>
+    <span class="block bg-ink py-1 text-center font-mono text-[9px] tracking-widest text-gold-light">${label}</span></div>`;
+  const place = {
+    // Mock only: real placement on the body comes from the AI backend, so show the piece as a close-up inset
+    necklace: closeUp('NECKLACE CLOSE-UP'),
+    earrings: closeUp('EARRING CLOSE-UP'),
+    ring: closeUp('HAND CLOSE-UP'),
+    bracelet: closeUp('WRIST CLOSE-UP'),
+  }[state.type];
+  const tint = { 'Warm Indian / Bridal Studio': 'sepia(.18) saturate(1.15)', 'Fair Editorial': 'brightness(1.06) saturate(.85)', 'Natural Daylight': 'brightness(1.04) contrast(1.04)' }[state.preset];
+  return `<div class="fade-in relative h-full w-full">
+    <img src="${MODEL_PHOTO}" class="h-full w-full object-cover" style="filter:${tint}" alt="Model"/>${place}
+    <span class="absolute left-3 top-3 rounded-full bg-white/85 px-2.5 py-1 font-mono text-[10px] tracking-wider backdrop-blur">ON MODEL · ${state.preset.split(' /')[0].toUpperCase()}</span></div>`;
+}
+
+function renderStudio() {
+  const up = state.uploads.studio, s = state.studio, isModel = state.tab === 'model';
+  renderDrop('studio');
+  $('step2Title').textContent = isModel ? 'Model Options' : 'Enhance Options';
+  $('modelOpts').classList.toggle('hidden', !isModel);
+  $('typeChips').innerHTML = TYPES.map(([k, l]) => `<button data-type="${k}" class="rounded-lg border border-line px-1 py-2 text-xs font-medium transition hover:border-gold/60 ${state.type === k ? 'sel' : ''}">${l}</button>`).join('');
+  $('runBtn').textContent = isModel ? '👤 Show on Model ✨' : '✨ Enhance Photo';
+  $('runBtn').disabled = !up || s.status === 'loading';
+  $('runHint').textContent = !up ? 'Upload a photo to begin' : isModel ? 'Places the piece on a model · ≈ 2 sec' : 'White background, studio light · ≈ 2 sec';
+  $('outTitle').textContent = isModel ? 'Show on Model' : 'Enhance';
+  $('outMeta').innerHTML = up ? `<div class="font-mono text-gold-deep">${TYPES.find(t => t[0] === state.type)[1].toUpperCase()}</div><div class="max-w-[220px] truncate">${up.name}</div>` : `<div class="font-mono text-ink/40">NO PHOTO YET</div>`;
+
+  $('inTag').textContent = up ? 'INPUT' : '—';
+  $('inBox').innerHTML = up ? `<img src="${up.img}" class="h-full w-full object-contain" alt="Original"/>` : `<div class="p-6 text-center text-sm text-ink/40">Your photo appears here</div>`;
+
+  const box = $('outBox');
+  if (s.status === 'done' && s.kind === 'model') box.innerHTML = modelHTML(up);
+  else if (s.status === 'done') box.innerHTML = enhancedHTML(up);
+  else if (s.status === 'idle') box.innerHTML = empty(up ? (isModel ? 'Ready to place on model' : 'Ready to enhance') : 'Waiting for a photo', isModel ? state.preset : 'Background → pure white');
+  $('outTag').textContent = s.status === 'done' ? (s.kind === 'model' ? 'ON MODEL' : 'ENHANCED') + (s.metal !== 'original' ? ' · ' + s.metal.toUpperCase() : '') : '—';
+
+  // Metal bar only for results
+  $('metalBar').classList.toggle('hidden', s.status !== 'done');
+  $('toModel').classList.toggle('hidden', s.kind === 'model');
+  $('metalChips').innerHTML = METALS.map(([k, l, cls]) => `<button data-metal="${k}" class="flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-xs font-medium transition hover:border-gold/60 ${s.metal === k ? 'sel' : ''}">
+    <span class="h-4 w-4 rounded-full" style="background:${{ original: 'conic-gradient(#C8A152,#E8B4A0,#D9D9D9,#C8A152)', yellow: 'linear-gradient(135deg,#B8862E,#F1D27A)', rose: 'linear-gradient(135deg,#B76E5A,#F0C2B0)', white: 'linear-gradient(135deg,#9EA3A8,#F2F2F2)' }[k]}"></span>${l} ✨</button>`).join('');
+
+  renderActions('studio', s.status === 'done', `Jewelix AI · ${up ? up.name : ''} (${s.kind === 'model' ? 'on model' : 'enhanced'}${s.metal !== 'original' ? ', ' + s.metal + ' gold' : ''})`);
+}
+
+function runStudio(kind) {
+  const up = state.uploads.studio; if (!up || busy()) return;
+  state.studio = { status: 'loading', kind, metal: state.studio.metal }; state.attached.studio = false;
+  render();
+  simulate($('outBox'), kind, () => { state.studio.status = 'done'; render(); toast(kind === 'model' ? 'Model shot ready' : 'Enhanced on white background'); });
+}
+
+/* ============ Blend ============ */
+function renderBlend() {
+  renderDrop('blendA'); renderDrop('blendB');
+  const a = state.uploads.blendA, b = state.uploads.blendB, s = state.blend;
+  $('blendBtn').disabled = !a || !b || s.status === 'loading';
+  $('mixVal').textContent = `${100 - s.mix} / ${s.mix}`;
+  $('blendTag').textContent = s.status === 'done' ? 'JX-NEW-' + (2000 + s.mix) : '—';
+  const box = $('blendBox');
+  if (s.status === 'done') {
+    const ia = a.img, ib = b.img;
+    box.innerHTML = `<div class="fade-in relative h-full w-full bg-white">
+      <img src="${ia}" class="absolute inset-0 h-full w-full object-contain p-6" style="opacity:${(100 - s.mix) / 100 + .2};filter:contrast(1.1)"/>
+      <img src="${ib}" class="absolute inset-0 h-full w-full scale-90 object-contain p-6" style="opacity:${s.mix / 100 + .2};mix-blend-mode:multiply;filter:contrast(1.1)"/>
+      <span class="absolute left-3 top-3 rounded-full bg-ink px-2.5 py-1 font-mono text-[10px] tracking-wider text-gold-light">NEW DESIGN</span></div>`;
+  } else if (s.status === 'idle') box.innerHTML = empty(a && b ? 'Ready to blend' : 'Add two designs', 'A new piece inspired by both');
+  renderActions('blend', s.status === 'done', `New Jewelix design JX-NEW-${2000 + s.mix}, blended from ${a ? a.name : ''} + ${b ? b.name : ''}`);
+}
+
+/* ============ Inventory search ============ */
+function renderSearch() {
+  renderDrop('search');
+  const up = state.uploads.search, s = state.search, out = $('searchOut');
+  $('searchBtn').disabled = !up || s.status === 'loading';
+  $('matchBadge').classList.add('hidden');
+  if (s.status === 'loading') {
+    out.innerHTML = `<div class="grid gap-5 md:grid-cols-[220px_1fr]">
+      <div class="relative aspect-square overflow-hidden rounded-xl border border-line"><img src="${up.img}" class="h-full w-full object-cover"/><div class="scan-line"></div></div>
+      <div class="grid content-center gap-3"><div class="load-msg font-serif text-xl">${MSGS.search[0]}</div>
+      ${[1, 2, 3, 4].map(() => `<div class="shimmer h-14 rounded-xl"></div>`).join('')}</div></div>`;
+    return;
+  }
+  if (s.status !== 'done') { out.innerHTML = `<div class="aspect-[16/7]">${empty(up ? 'Ready to search' : 'Upload a reference photo', 'We will look through every piece in stock')}</div>`; return; }
+
+  // No stock data yet: results will come from the ERP inventory once connected
+  out.innerHTML = `<div class="fade-in grid gap-5 md:grid-cols-[220px_1fr]">
+    <div><p class="mb-2 font-mono text-[10px] tracking-[.18em] text-ink/60">CLIENT PHOTO</p>
+      <div class="aspect-square overflow-hidden rounded-xl border border-line bg-ivory"><img src="${up.img}" class="h-full w-full object-cover"/></div></div>
+    <div class="grid place-items-center rounded-xl border border-dashed border-gold/60 bg-ivory p-6 text-center"><div>
+      <div class="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-full border border-gold/50 bg-white text-2xl">⌕</div>
+      <div class="font-serif text-xl">No inventory connected yet</div>
+      <p class="mx-auto mt-1 max-w-xs text-xs text-ink/50">Matches from your stock will appear here once your Jewelix ERP inventory is linked.</p>
+      <button onclick="toast('Inventory sync coming soon')" class="mt-4 rounded-xl bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black">Connect inventory</button>
+    </div></div>
+  </div>`;
+}
+
+/* ============ Tabs + render ============ */
+function render() {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('tab-on', t.dataset.tab === state.tab));
+  const studio = state.tab === 'enhance' || state.tab === 'model';
+  $('view-studio').classList.toggle('hidden', !studio);
+  $('view-blend').classList.toggle('hidden', state.tab !== 'blend');
+  $('view-search').classList.toggle('hidden', state.tab !== 'search');
+  renderStudio(); renderBlend(); renderSearch();
+}
+
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  if (busy()) return;
+  const wasStudio = state.tab === 'enhance' || state.tab === 'model';
+  state.tab = t.dataset.tab;
+  if (wasStudio && (state.tab === 'enhance' || state.tab === 'model') && state.studio.status === 'done') { /* keep result */ }
+  render();
+}));
+
+$('typeChips').addEventListener('click', e => {
+  const b = e.target.closest('[data-type]'); if (!b || busy()) return;
+  state.type = b.dataset.type; render();
+});
+$('preset').addEventListener('change', e => { state.preset = e.target.value; render(); });
+$('metalChips').addEventListener('click', e => {
+  const b = e.target.closest('[data-metal]'); if (!b) return;
+  state.studio.metal = b.dataset.metal; render();
+});
+$('runBtn').addEventListener('click', () => runStudio(state.tab === 'model' ? 'model' : 'enhance'));
+$('toModel').addEventListener('click', () => { state.tab = 'model'; runStudio('model'); });
+
+$('mix').addEventListener('input', e => { state.blend.mix = +e.target.value; render(); });
+$('blendBtn').addEventListener('click', () => {
+  if (busy()) return;
+  state.blend.status = 'loading'; state.attached.blend = false; render();
+  simulate($('blendBox'), 'blend', () => { state.blend.status = 'done'; render(); toast('New design created'); });
+});
+
+$('searchBtn').addEventListener('click', () => {
+  if (busy() || !state.uploads.search) return;
+  state.search.status = 'loading'; render();
+  let i = 0; const iv = setInterval(() => { const m = document.querySelector('#searchOut .load-msg'); if (m) m.textContent = MSGS.search[++i % 3]; }, 700);
+  setTimeout(() => { clearInterval(iv); state.search.status = 'done'; render(); toast('Search complete'); }, 2200);
+});
+
+['studio', 'blendA', 'blendB', 'search'].forEach(wireDrop);
+wireActions('studio'); wireActions('blend');
+render();
+</script>
+</body>
+</html>
