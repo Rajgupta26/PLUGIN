@@ -3,7 +3,7 @@
 Prototype of the Jewelix AI Studio plugin. Runs entirely in the browser; there is no backend yet.
 
 - **Enhance**: removes the background (automatic, with an in-browser AI cutout for difficult photos) and shows the piece on white, with yellow / rose / white gold previews
-- **Show on Model**: creates a realistic photo of the piece being worn, using the open Qwen-Image-Edit model on a free Hugging Face Space. Model photos live in `models/` (Maya, Meera); rings and bracelets use stock hand/wrist photos
+- **Show on Model**: creates a realistic photo of the piece being worn, using the open Qwen-Image-Edit model on a free Hugging Face Space. Model photos live in `models/` (Maya, Meera); rings and bracelets use a stock hand photo. For earrings, rings and bracelets the AI works on a close-up of the ear, fingers or wrist, which is blended back into the full photo
 - **Blend**: combines two designs into a new one
 - **Inventory Match**: searches stock from a client's reference photo (shows a "connect inventory" state until the ERP is linked)
 - **Raw / Catalog**: original uploads for the session, and finished results saved with "Add to Catalog" (kept in the browser)

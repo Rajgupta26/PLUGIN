@@ -261,11 +261,15 @@ const U = (id, q = 'w=1000&q=85') => `https://images.unsplash.com/${id}?${q}`;
 const FRAME = 'w=1200&h=1500&fit=crop&q=85';
 
 // Model photos for Show on Model. Maya and Meera are the client's own jewellery-free photos (models/ folder).
+// focus: for small pieces the AI works on a square close-up of this spot (centre cx/cy as fractions of the
+// photo, size w as a fraction of its width), which is then blended back into the full photo.
 const MODELS = [
-  { id: 'maya', name: 'Maya', src: 'models/maya.jpg', types: ['necklace', 'earrings'] },
-  { id: 'meera', name: 'Meera', src: 'models/meera.jpg', types: ['necklace', 'earrings'] },
-  { id: 'hand', name: 'Hand', src: U('photo-1610992015762-45dca7fa3a85', FRAME), types: ['ring'] },
-  { id: 'wrist', name: 'Wrist', src: U('photo-1617069897015-7d27a76232ed', FRAME), types: ['bracelet'] },
+  { id: 'maya', name: 'Maya', src: 'models/maya.jpg', types: ['necklace', 'earrings'],
+    focus: { earrings: { cx: .29, cy: .33, w: .42 } } },
+  { id: 'meera', name: 'Meera', src: 'models/meera.jpg', types: ['necklace', 'earrings'],
+    focus: { earrings: { cx: .70, cy: .41, w: .42 } } },
+  { id: 'hand', name: 'Hand', src: U('photo-1617069897015-7d27a76232ed', FRAME), types: ['ring', 'bracelet'],
+    focus: { ring: { cx: .53, cy: .46, w: .55 }, bracelet: { cx: .45, cy: .76, w: .5 } } },
 ];
 
 // Demo stock for "Choose from inventory" (no prices for now)
@@ -530,14 +534,17 @@ async function toDataURL(src, max = 1024) {
 
 function aiPrompt(type, metal) {
   const m = metal && metal !== 'original' ? ` in ${METALS.find(x => x[0] === metal)[1].toLowerCase()}` : '';
-  const where = {
-    necklace: `wear the necklace from image 2${m} around her neck: the chain goes around the back of her neck and drapes naturally over her collarbones, with the pendant resting on her chest`,
-    earrings: `wear the earring from image 2${m}, hanging from her visible earlobe`,
-    ring: `wear the ring from image 2${m} on her ring finger, fitted naturally around the finger`,
-    bracelet: `wear the bracelet from image 2${m} around her wrist, sitting naturally on the skin`,
+  if (type === 'necklace')
+    return `Make the person in image 1 wear the necklace from image 2${m} around her neck: the chain goes around the back of her neck and drapes naturally over her collarbones, with the pendant resting on her chest. ` +
+      `Keep the jewellery design exactly identical to image 2: same shape, stones, metal colour and chain thickness. ` +
+      `Keep her face, hair, skin, clothes, pose, background and lighting exactly the same as image 1. Realistic shadows and reflections where the jewellery touches the skin. Photorealistic high-end jewellery catalogue photo.`;
+  const keep = (what) => `Keep the jewellery design exactly identical to image 2: same shape, stones and metal colour. Keep ${what} exactly the same as image 1, with the same framing. ` +
+    `Realistic size, perspective, shadows and reflections where the jewellery touches the skin. Photorealistic high-end jewellery catalogue photo.`;
+  return {
+    earrings: `Image 1 is a close-up of a woman's ear. Add the earring from image 2${m} to her earlobe: it hangs from the earlobe through the piercing, at the real size of an earring. ` + keep('her ear, hair, skin, face and background'),
+    ring: `Image 1 is a close-up of a woman's hand. Put the ring from image 2${m} on her ring finger: the band wraps around the finger near its base, seen in correct perspective, at the real size of a ring. ` + keep('the hand, fingers, nails, skin and background'),
+    bracelet: `Image 1 is a close-up of a woman's wrist. Put the bracelet from image 2${m} around her wrist: it wraps around the wrist following its curve and sits naturally on the skin, at the real size of a bracelet. ` + keep('the hand, wrist, skin and background'),
   }[type];
-  return `Make the person in image 1 ${where}. Keep the jewellery design exactly identical to image 2: same shape, stones, metal colour and chain thickness. ` +
-    `Keep her face, hair, skin, clothes, pose, background and lighting exactly the same as image 1. Realistic shadows and reflections where the jewellery touches the skin. Photorealistic high-end jewellery catalogue photo.`;
 }
 
 function aiError(e) {
@@ -558,21 +565,80 @@ async function pieceOnWhite(up) {
   return c.toDataURL('image/jpeg', .92);
 }
 
-// Show on Model: send the model photo + the cut-out piece to the free AI and return the finished photo
+// Square close-up (in pixels) the AI should work on for this jewellery type, or null to send the whole photo
+function focusRect(model, type, im) {
+  const f = model.focus && model.focus[type]; if (!f) return null;
+  const W = im.naturalWidth, H = im.naturalHeight, side = Math.round(Math.min(f.w * W, W, H));
+  const x = Math.round(Math.min(Math.max(f.cx * W - side / 2, 0), W - side));
+  const y = Math.round(Math.min(Math.max(f.cy * H - side / 2, 0), H - side));
+  return { x, y, side };
+}
+
+function cropToDataURL(im, r, size = 1024) {
+  const c = canvasOf(size, size);
+  c.getContext('2d').drawImage(im, r.x, r.y, r.side, r.side, 0, 0, size, size);
+  return c.toDataURL('image/jpeg', .92);
+}
+
+// Did the AI keep the close-up's framing? Compare both on a coarse 24×24 grid; the added jewellery only changes
+// a few cells, while a moved hand, zoom or new background changes many, so look at the 80th-percentile difference.
+function shotChanged(a, b) {
+  const G = 24, grid = (c) => { const g = canvasOf(G, G), x = g.getContext('2d', { willReadFrequently: true }); x.drawImage(c, 0, 0, G, G); return x.getImageData(0, 0, G, G).data; };
+  const ga = grid(a), gb = grid(b), diffs = [];
+  for (let i = 0; i < ga.length; i += 4) diffs.push(Math.abs((ga[i] + ga[i + 1] + ga[i + 2]) - (gb[i] + gb[i + 1] + gb[i + 2])) / 3);
+  diffs.sort((x, y) => x - y);
+  shotChanged.last = diffs[Math.floor(diffs.length * .8)];
+  return shotChanged.last > SHOT_CHANGED_AT;
+}
+const SHOT_CHANGED_AT = 18;
+
+// Put the AI's close-up back into the full photo: correct any colour drift against the original
+// (measured on the outer band, where nothing should change), then blend it in with soft edges.
+// Returns null when the AI re-composed the shot (outer band no longer matches): the close-up is then used on its own.
+async function blendBack(im, r, outSrc) {
+  const out = await loadImg(outSrc), n = r.side;
+  const patch = canvasOf(n, n), px = patch.getContext('2d', { willReadFrequently: true });
+  px.drawImage(out, 0, 0, n, n);
+  const orig = canvasOf(n, n), ox = orig.getContext('2d', { willReadFrequently: true });
+  ox.drawImage(im, r.x, r.y, n, n, 0, 0, n, n);
+  const pd = px.getImageData(0, 0, n, n), d = pd.data, od = ox.getImageData(0, 0, n, n).data, band = Math.round(n * .1);
+  const sumP = [0, 0, 0], sumO = [0, 0, 0];
+  for (let y = 0; y < n; y += 2) for (let x = 0; x < n; x += 2) {
+    if (x > band && x < n - band && y > band && y < n - band) continue;
+    const i = (y * n + x) * 4;
+    for (let k = 0; k < 3; k++) { sumP[k] += d[i + k]; sumO[k] += od[i + k]; }
+  }
+  const gain = sumP.map((v, k) => Math.min(1.15, Math.max(.87, sumO[k] / Math.max(1, v))));
+  for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) d[i + k] = Math.min(255, d[i + k] * gain[k]);
+  px.putImageData(pd, 0, 0);
+  if (shotChanged(patch, orig)) return null;
+  const mask = canvasOf(n, n), mx = mask.getContext('2d'), f = Math.round(n * .08);
+  mx.filter = `blur(${f / 2}px)`; mx.fillStyle = '#000'; mx.fillRect(f, f, n - 2 * f, n - 2 * f);
+  px.globalCompositeOperation = 'destination-in'; px.drawImage(mask, 0, 0);
+  const full = canvasOf(im.naturalWidth, im.naturalHeight), fx = full.getContext('2d');
+  fx.drawImage(im, 0, 0); fx.drawImage(patch, r.x, r.y);
+  return full.toDataURL('image/jpeg', .93);
+}
+
+// Show on Model: send the model photo (or a close-up of the ear / fingers / wrist for small pieces)
+// plus the cut-out piece to the free AI, and return the finished photo
 async function generateOnModel(up) {
   fitModelToType();
   const model = MODELS.find(m => m.id === state.modelId), t0 = Date.now();
   // The cut-out piece goes on plain white so the AI can't borrow the product photo's background
-  const [{ Client }, modelImg, piece] = await Promise.all([loadGradio(), toDataURL(model.src), pieceOnWhite(up)]);
+  const [{ Client }, im, piece] = await Promise.all([loadGradio(), loadImg(model.src), pieceOnWhite(up)]);
+  const rect = focusRect(model, state.type, im);
+  const base = rect ? cropToDataURL(im, rect) : await toDataURL(model.src);
   const token = hfToken();
   const app = await Client.connect(AI_SPACE, token ? { token } : {});
   const res = await app.predict('/edit_image', {
-    images_b64_json: JSON.stringify([modelImg, piece]), prompt: aiPrompt(state.type, state.studio.metal),
+    images_b64_json: JSON.stringify([base, piece]), prompt: aiPrompt(state.type, state.studio.metal),
     lora_adapter: AI_STYLE, seed: 0, randomize_seed: true, guidance_scale: 1.0, steps: 4,
   });
   const out = res.data && res.data[0] && (res.data[0].image || res.data[0].url);
   if (!out) throw new Error('No image returned');
-  return { photo: out, photoImg: await loadImg(out), model, secs: Math.round((Date.now() - t0) / 1000) };
+  const photo = (rect && await blendBack(im, rect, out)) || out;
+  return { photo, photoImg: await loadImg(photo), model, secs: Math.round((Date.now() - t0) / 1000) };
 }
 
 /* ============ Enhance + Blend renders ============ */
@@ -805,7 +871,8 @@ function renderStudio() {
   const showModel = s.status === 'done' && s.kind === 'model';
   $('outGrid').className = 'grid gap-4 ' + (showModel ? 'md:grid-cols-[1fr_1.4fr]' : 'md:grid-cols-2');
   const box = $('outBox');
-  box.className = 'relative overflow-hidden rounded-xl border border-line ' + (showModel ? 'aspect-[4/5] bg-ivory' : 'aspect-square bg-ivory');
+  box.className = 'relative overflow-hidden rounded-xl border border-line bg-ivory ' + (showModel ? '' : 'aspect-square');
+  box.style.aspectRatio = showModel ? `${scene.photoImg.naturalWidth} / ${scene.photoImg.naturalHeight}` : '';
   if (showModel) {
     if (!box.querySelector('img.ai-photo') || box.querySelector('img.ai-photo').src !== scene.photo)
       box.innerHTML = `<img class="ai-photo fade-in block h-full w-full object-cover" src="${scene.photo}" alt="Jewellery on model"/>`;
