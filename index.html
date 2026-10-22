@@ -35,21 +35,19 @@
   .fade-in { animation: fade .6s ease both; }
   @keyframes fade { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
   .sel { border-color: #C8A152 !important; box-shadow: 0 0 0 3px rgba(200,161,82,.18); background: #FFFDF8 !important; }
+  .scan-line { position: absolute; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, #C8A152, transparent); box-shadow: 0 0 18px 4px rgba(200,161,82,.55); animation: scan 1.1s ease-in-out infinite alternate; }
+  @keyframes scan { from { top: 4%; } to { top: 94%; } }
   /* Click feedback on every button */
   button, a { transition: transform .12s ease, background-color .15s ease, border-color .15s ease, box-shadow .15s ease; }
   button:not(:disabled):active, a:active { transform: scale(.97); }
   button:focus-visible, a:focus-visible { outline: 2px solid #C8A152; outline-offset: 2px; }
-  .scan-line { position: absolute; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, #C8A152, transparent); box-shadow: 0 0 18px 4px rgba(200,161,82,.55); animation: scan 1.1s ease-in-out infinite alternate; }
-  @keyframes scan { from { top: 4%; } to { top: 94%; } }
-  /* Simulated metal recolouring */
-  .metal-yellow { filter: sepia(.35) saturate(1.7) hue-rotate(-6deg) brightness(1.02); }
-  .metal-rose   { filter: sepia(.2) saturate(1.05) hue-rotate(-14deg) brightness(1.03); }
-  .metal-white  { filter: grayscale(1) brightness(1.08) contrast(1.06); }
-  .soft-mask { -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent 100%); mask-image: radial-gradient(closest-side, #000 72%, transparent 100%); }
   /* !important so the hover colour never hides the selected tab */
   .tab-on { background: #181715 !important; color: #fff; box-shadow: 0 6px 18px -8px rgba(24,23,21,.6); }
   .tab-on:hover { background: #000 !important; }
   .tab-on .tab-sub { color: #E6CE93; }
+  .checker { background-color: #fff; background-image: linear-gradient(45deg,#f3eee5 25%,transparent 25%),linear-gradient(-45deg,#f3eee5 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f3eee5 75%),linear-gradient(-45deg,transparent 75%,#f3eee5 75%); background-size: 16px 16px; background-position: 0 0,0 8px,8px -8px,-8px 0; }
+  #stage { touch-action: none; }
+  input[type=range] { accent-color: #C8A152; }
 </style>
 </head>
 <body class="font-sans text-ink antialiased">
@@ -82,7 +80,7 @@
     </div>
 
     <!-- Tool tabs -->
-    <nav id="tabs" class="mb-6 grid grid-cols-2 gap-2 rounded-2xl border border-line bg-white p-1.5 md:grid-cols-4">
+    <nav id="tabs" class="mb-6 grid grid-cols-2 gap-2 rounded-2xl border border-line bg-white p-1.5 md:grid-cols-3 xl:grid-cols-6">
       <button data-tab="enhance" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
         <span class="text-lg">✨</span><span><span class="block text-sm font-semibold">Enhance</span><span class="tab-sub block text-[11px] text-ink/50">White background + metal</span></span>
       </button>
@@ -94,6 +92,12 @@
       </button>
       <button data-tab="search" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
         <span class="text-lg">⌕</span><span><span class="block text-sm font-semibold">Inventory Match</span><span class="tab-sub block text-[11px] text-ink/50">Find it in your stock</span></span>
+      </button>
+      <button data-tab="raw" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
+        <span class="text-lg">▢</span><span><span class="block text-sm font-semibold">Raw <span id="rawCount" class="font-mono text-[10px] text-gold-deep"></span></span><span class="tab-sub block text-[11px] text-ink/50">Original uploads</span></span>
+      </button>
+      <button data-tab="catalog" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
+        <span class="text-lg">❖</span><span><span class="block text-sm font-semibold">Catalog <span id="catCount" class="font-mono text-[10px] text-gold-deep"></span></span><span class="tab-sub block text-[11px] text-ink/50">Finished, ready to share</span></span>
       </button>
     </nav>
 
@@ -116,12 +120,19 @@
           <label class="mb-1.5 block font-mono text-[10px] tracking-[.18em] text-ink/50">JEWELLERY TYPE</label>
           <div id="typeChips" class="mb-4 grid grid-cols-4 gap-1.5"></div>
           <div id="modelOpts">
-            <label class="mb-1.5 block font-mono text-[10px] tracking-[.18em] text-ink/50" for="preset">MODEL / LIGHTING PRESET</label>
-            <select id="preset" class="mb-4 w-full rounded-xl border border-line bg-ivory px-4 py-3 text-sm outline-none focus:border-gold">
-              <option>Warm Indian / Bridal Studio</option>
-              <option>Fair Editorial</option>
-              <option>Natural Daylight</option>
-            </select>
+            <label class="mb-1.5 block font-mono text-[10px] tracking-[.18em] text-ink/50">MODEL</label>
+            <div id="modelPicker" class="mb-4 grid grid-cols-4 gap-2"></div>
+            <details id="aiTokenBox" class="mb-4 text-xs">
+              <summary class="cursor-pointer text-ink/60 hover:text-ink">Free Hugging Face token <span class="text-ink/40">(optional · more photos per day)</span></summary>
+              <div class="mt-2 rounded-lg bg-ivory p-3">
+                <p class="mb-2 text-[11px] text-ink/60">Without a token you get about 1 free photo a day. Create a free one at
+                  <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener" class="underline">huggingface.co/settings/tokens</a> (type: <b>Read</b>). Saved only in this browser — enter it once.</p>
+                <div class="flex gap-2">
+                  <input id="hfToken" type="password" autocomplete="off" placeholder="hf_…" class="min-w-0 flex-1 rounded-lg border border-line bg-white px-3 py-2 font-mono text-xs outline-none focus:border-gold" />
+                  <button id="hfSave" class="rounded-lg bg-ink px-3 py-2 text-xs font-medium text-white hover:bg-black">Save</button>
+                </div>
+              </div>
+            </details>
           </div>
           <button id="runBtn" class="gold-grad flex w-full items-center justify-center gap-2 rounded-xl px-5 py-4 text-base font-semibold text-ink shadow-[0_8px_24px_-8px_rgba(200,161,82,.7)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"></button>
           <p id="runHint" class="mt-2 text-center text-[11px] text-ink/50"></p>
@@ -137,7 +148,7 @@
           </div>
           <div id="outMeta" class="text-right text-xs text-ink/60"></div>
         </div>
-        <div class="grid gap-4 md:grid-cols-2">
+        <div id="outGrid" class="grid gap-4 md:grid-cols-2">
           <div>
             <div class="mb-2 flex items-center justify-between"><span class="font-mono text-[10px] tracking-[.18em] text-ink/60">ORIGINAL PHOTO</span><span id="inTag" class="rounded bg-ivory px-2 py-0.5 font-mono text-[10px] text-ink/50">—</span></div>
             <div id="inBox" class="relative grid aspect-square place-items-center overflow-hidden rounded-xl border border-line bg-ivory"></div>
@@ -148,8 +159,11 @@
           </div>
         </div>
 
-        <!-- Metal recolour (after Enhance) -->
-        <div id="metalBar" class="mt-5 hidden rounded-xl border border-line bg-ivory p-4">
+        <!-- Jewellery details (pieces picked from inventory) -->
+        <div id="detailsBox" class="mt-4 hidden"></div>
+
+        <!-- Metal recolour -->
+        <div id="metalBar" class="mt-4 hidden rounded-xl border border-line bg-ivory p-4">
           <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
             <p class="font-mono text-[10px] tracking-[.18em] text-ink/60">SHOW YOUR CLIENT IN ANOTHER METAL</p>
             <button id="toModel" class="rounded-full border border-ink/80 px-3 py-1 text-xs font-medium transition hover:bg-ink hover:text-white">Show on model ✨</button>
@@ -178,7 +192,7 @@
           <div class="mb-3 flex items-center justify-between"><p class="font-mono text-[10px] tracking-[.18em] text-ink/60">NEW CREATION</p><span id="blendTag" class="rounded bg-ivory px-2 py-0.5 font-mono text-[10px] text-ink/50">—</span></div>
           <div id="blendBox" class="relative aspect-square overflow-hidden rounded-xl border border-line bg-ivory"></div>
           <label class="mt-4 flex items-center justify-between font-mono text-[10px] tracking-[.18em] text-ink/50"><span>MORE OF A</span><span id="mixVal">50 / 50</span><span>MORE OF B</span></label>
-          <input id="mix" type="range" min="20" max="80" value="50" class="mt-1 w-full accent-[#C8A152]" />
+          <input id="mix" type="range" min="20" max="80" value="50" class="mt-1 w-full" />
           <button id="blendBtn" class="gold-grad mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-semibold text-ink transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50">Blend ✨</button>
         </div>
       </div>
@@ -202,24 +216,78 @@
       <div class="rounded-2xl border border-line bg-white p-5 sm:p-6">
         <div class="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-line pb-4">
           <div><p class="font-mono text-[10px] tracking-[.18em] text-ink/50">RESULTS</p><h2 class="font-serif text-2xl">Inventory Match</h2></div>
-          <span id="matchBadge" class="hidden rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">● Match found</span>
         </div>
         <div id="searchOut"></div>
       </div>
     </section>
+
+    <!-- ================= RAW ================= -->
+    <section id="view-raw" class="hidden rounded-2xl border border-line bg-white p-5 sm:p-6">
+      <div class="mb-5 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-4">
+        <div><p class="font-mono text-[10px] tracking-[.18em] text-ink/50">LIBRARY</p><h2 class="font-serif text-2xl">Raw Photos</h2></div>
+        <p class="max-w-sm text-xs text-ink/50">Every original photo you've uploaded or picked from inventory in this session, untouched.</p>
+      </div>
+      <div id="rawGrid"></div>
+    </section>
+
+    <!-- ================= CATALOG ================= -->
+    <section id="view-catalog" class="hidden rounded-2xl border border-line bg-white p-5 sm:p-6">
+      <div class="mb-5 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-4">
+        <div><p class="font-mono text-[10px] tracking-[.18em] text-ink/50">READY TO SHARE</p><h2 class="font-serif text-2xl">Catalog</h2></div>
+        <p class="max-w-sm text-xs text-ink/50">Finished photos saved with “Add to Catalog”, with their jewellery details. Saved in this browser.</p>
+      </div>
+      <div id="catGrid"></div>
+    </section>
   </main>
 
-  <div id="toast" class="pointer-events-none fixed bottom-6 left-1/2 z-30 -translate-x-1/2 translate-y-4 rounded-full bg-ink px-5 py-2.5 text-sm text-white opacity-0 transition"></div>
+  <!-- Inventory picker -->
+  <div id="invModal" class="fixed inset-0 z-40 hidden items-end justify-center bg-ink/40 p-0 backdrop-blur-sm sm:items-center sm:p-6">
+    <div class="max-h-[88vh] w-full max-w-3xl overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
+      <div class="flex items-center justify-between border-b border-line px-5 py-4">
+        <div><p class="font-mono text-[10px] tracking-[.18em] text-ink/50">JEWELIX ERP · DEMO STOCK</p><h3 class="font-serif text-xl">Choose from Inventory</h3></div>
+        <button id="invClose" class="grid h-9 w-9 place-items-center rounded-full border border-line text-ink/60 hover:border-gold hover:text-ink" aria-label="Close">✕</button>
+      </div>
+      <div class="flex gap-1.5 overflow-x-auto border-b border-line px-5 py-3" id="invFilters"></div>
+      <div id="invGrid" class="grid max-h-[60vh] grid-cols-2 gap-3 overflow-y-auto p-5 sm:grid-cols-3"></div>
+      <p class="border-t border-line px-5 py-3 text-[11px] text-ink/50">Click a piece, or drag it onto the upload box.</p>
+    </div>
+  </div>
+
+  <div id="toast" class="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 translate-y-4 rounded-full bg-ink px-5 py-2.5 text-sm text-white opacity-0 transition"></div>
 
 <script>
-/* ============ Mock data ============ */
-const MODEL_PHOTO = 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?auto=format&fit=crop&w=900&h=900&q=80';
+/* ============ Data ============ */
+const U = (id, q = 'w=1000&q=85') => `https://images.unsplash.com/${id}?${q}`;
+const FRAME = 'w=1200&h=1500&fit=crop&q=85';
+
+// Model photos for Show on Model. Maya and Meera are the client's own jewellery-free photos (models/ folder).
+const MODELS = [
+  { id: 'maya', name: 'Maya', src: 'models/maya.jpg', types: ['necklace', 'earrings'] },
+  { id: 'meera', name: 'Meera', src: 'models/meera.jpg', types: ['necklace', 'earrings'] },
+  { id: 'hand', name: 'Hand', src: U('photo-1610992015762-45dca7fa3a85', FRAME), types: ['ring'] },
+  { id: 'wrist', name: 'Wrist', src: U('photo-1617069897015-7d27a76232ed', FRAME), types: ['bracelet'] },
+];
+
+// Demo stock for "Choose from inventory" (no prices for now)
+const INVENTORY = [
+  { sku: 'NK-2031', name: 'Temple Lakshmi Necklace', type: 'necklace', img: U('photo-1601121141499-17ae80afc03a'), purity: '22K', metal: 'Yellow gold', weight: '48.60 g', carat: '—', stones: 'Ruby accents' },
+  { sku: 'ER-1180', name: 'Fan Drop Earrings', type: 'earrings', img: U('photo-1721722299497-882954bada45'), purity: '18K', metal: 'Yellow gold', weight: '7.20 g', carat: '—', stones: 'Enamel' },
+  { sku: 'ER-1194', name: 'Shell Fan Earrings', type: 'earrings', img: U('photo-1721722224616-447ed06c02e1'), purity: '18K', metal: 'Yellow gold', weight: '6.40 g', carat: '—', stones: 'Cowrie shell' },
+  { sku: 'RG-0942', name: 'Pear Halo Diamond Ring', type: 'ring', img: U('photo-1605100804567-1ffe942b5cd6'), purity: '18K', metal: 'White gold', weight: '4.10 g', carat: '1.12 ct', stones: 'Pear + halo, VS1 / F' },
+  { sku: 'RG-0957', name: 'Princess Solitaire Ring', type: 'ring', img: U('photo-1713950920412-97799efdf870'), purity: '18K', metal: 'Rose gold', weight: '3.60 g', carat: '0.50 ct', stones: 'Princess cut, VVS2 / G' },
+  { sku: 'BR-0418', name: 'Diamond Link Bracelet', type: 'bracelet', img: U('photo-1611591437281-460bfbe1220a'), purity: '18K', metal: 'Rose gold', weight: '14.20 g', carat: '2.40 ct', stones: 'Round brilliant, SI1 / H' },
+];
 
 const TYPES = [['necklace', 'Necklace'], ['earrings', 'Earrings'], ['ring', 'Ring'], ['bracelet', 'Bracelet']];
-const METALS = [['original', 'Original', ''], ['yellow', 'Yellow gold', 'metal-yellow'], ['rose', 'Rose gold', 'metal-rose'], ['white', 'White gold', 'metal-white']];
+const METALS = [
+  ['original', 'Original', 'none'],
+  ['yellow', 'Yellow gold', 'sepia(.35) saturate(1.7) hue-rotate(-6deg) brightness(1.02)'],
+  ['rose', 'Rose gold', 'sepia(.2) saturate(1.05) hue-rotate(-14deg) brightness(1.03)'],
+  ['white', 'White gold', 'grayscale(1) brightness(1.08) contrast(1.06)'],
+];
 const MSGS = {
   enhance: ['Detecting jewellery edges…', 'Removing background…', 'Relighting metal & stones…'],
-  model: ['Finding placement on model…', 'Matching skin tone & lighting…', 'Rendering shadows…'],
+  model: ['Cutting out the piece…', 'AI is putting it on the model…', 'Rendering natural light & shadows…', 'Almost there – free AI service, may queue…'],
   blend: ['Reading both designs…', 'Merging motifs…', 'Rendering new creation…'],
   search: ['Reading shape & motif…', 'Comparing with stock photos…', 'Ranking matches…'],
 };
@@ -228,43 +296,342 @@ const MSGS = {
 const state = {
   tab: 'enhance',
   uploads: { studio: null, blendA: null, blendB: null, search: null },
-  type: 'necklace', preset: 'Warm Indian / Bridal Studio',
-  studio: { status: 'idle', kind: null, metal: 'original' },  // kind: 'enhance' | 'model'
+  type: 'necklace', modelId: 'maya',
+  studio: { status: 'idle', kind: null, metal: 'original' },  // kind: 'enhance' | 'model'; status also 'error' (with msg)
   blend: { status: 'idle', mix: 50 },
   search: { status: 'idle' },
-  attached: { studio: false, blend: false },
+  added: { studio: false, blend: false },
+  raw: [],
+  catalog: loadCatalog(),
+  invFilter: 'all',
 };
+const scene = {};  // current results: enhCut (Enhance), photo/photoImg/model/secs (Show on Model)
+let enhanceCanvas = null, blendCanvas = null;
 
 const $ = (id) => document.getElementById(id);
 const busy = () => [state.studio, state.blend, state.search].some(s => s.status === 'loading');
+const wait = (ms) => new Promise(r => setTimeout(r, ms));
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function toast(msg) {
   const t = $('toast'); t.textContent = msg;
   t.classList.remove('opacity-0', 'translate-y-4');
-  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('opacity-0', 'translate-y-4'), 2200);
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('opacity-0', 'translate-y-4'), 2400);
 }
 
-function loader(box, kind) {
-  box.innerHTML = `<div class="shimmer absolute inset-0"></div><div class="relative grid h-full place-items-center p-6 text-center"><div>
+function loadCatalog() { try { return JSON.parse(localStorage.getItem('jewelix.catalog') || '[]'); } catch { return []; } }
+function saveCatalog() {
+  try { localStorage.setItem('jewelix.catalog', JSON.stringify(state.catalog)); }
+  catch { toast('Catalog is full in this browser – remove a few items'); }
+}
+
+/* ============ Image engine ============ */
+const imgCache = new Map();
+function loadImg(src) {
+  if (!imgCache.has(src)) imgCache.set(src, new Promise((res, rej) => {
+    const im = new Image();
+    if (/^https?:/.test(src)) im.crossOrigin = 'anonymous';
+    im.onload = () => res(im); im.onerror = () => rej(new Error('Could not load image'));
+    im.src = src;
+  }));
+  return imgCache.get(src);
+}
+
+function canvasOf(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+
+// Crop a canvas to its visible (non-transparent) pixels
+function trim(c, pad = 6) {
+  const ctx = c.getContext('2d'), { width: w, height: h } = c, d = ctx.getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 24) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return c;
+  x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(w - 1, x1 + pad); y1 = Math.min(h - 1, y1 + pad);
+  const out = canvasOf(x1 - x0 + 1, y1 - y0 + 1);
+  out.getContext('2d').drawImage(c, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
+  return out;
+}
+
+// Background removal for studio-style photos: flood-fill the background from the edges,
+// then feather the edge and un-mix the background colour from edge pixels.
+function keyOut(img) {
+  const s = Math.min(1, 1000 / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.round(img.naturalWidth * s), h = Math.round(img.naturalHeight * s);
+  const c = canvasOf(w, h), ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, w, h);
+  const id = ctx.getImageData(0, 0, w, h), d = id.data;
+
+  // Background colour = median of the border pixels
+  const border = [];
+  for (let x = 0; x < w; x += 2) border.push(x, (h - 1) * w + x);
+  for (let y = 0; y < h; y += 2) border.push(y * w, y * w + w - 1);
+  const med = [0, 1, 2].map(k => { const v = border.map(i => d[i * 4 + k]).sort((a, b) => a - b); return v[v.length >> 1]; });
+  const spread = Math.sqrt(border.reduce((a, i) => a + (d[i * 4] - med[0]) ** 2 + (d[i * 4 + 1] - med[1]) ** 2 + (d[i * 4 + 2] - med[2]) ** 2, 0) / border.length);
+  const tol = Math.max(28, Math.min(85, 22 + spread * 1.6));
+  const dist = (i) => Math.sqrt((d[i * 4] - med[0]) ** 2 + (d[i * 4 + 1] - med[1]) ** 2 + (d[i * 4 + 2] - med[2]) ** 2);
+
+  const bg = new Uint8Array(w * h), q = new Int32Array(w * h); let qh = 0, qt = 0;
+  const push = (i) => { if (!bg[i] && dist(i) < tol) { bg[i] = 1; q[qt++] = i; } };
+  for (let x = 0; x < w; x++) { push(x); push((h - 1) * w + x); }
+  for (let y = 0; y < h; y++) { push(y * w); push(y * w + w - 1); }
+  while (qh < qt) {
+    const i = q[qh++], x = i % w;
+    if (x > 0) push(i - 1); if (x < w - 1) push(i + 1); if (i >= w) push(i - w); if (i < w * (h - 1)) push(i + w);
+  }
+
+  // Soft alpha: distance-based ramp near the background colour, then a small blur
+  const a = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) a[i] = bg[i] ? 0 : Math.min(1, Math.max(0, (dist(i) - tol * .55) / (tol * .9)));
+  const b = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let sum = 0, n = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < w && yy < h) { sum += a[yy * w + xx]; n++; } }
+    b[y * w + x] = bg[y * w + x] ? 0 : (a[y * w + x] * .6 + (sum / n) * .4);
+  }
+  for (let i = 0; i < w * h; i++) {
+    const al = b[i];
+    if (al > 0 && al < .98) for (let k = 0; k < 3; k++) d[i * 4 + k] = Math.max(0, Math.min(255, (d[i * 4 + k] - med[k] * (1 - al)) / al));
+    d[i * 4 + 3] = Math.round(al * 255);
+  }
+  ctx.putImageData(id, 0, 0);
+  return c;
+}
+
+// Keep only the main piece: drop separate blobs much smaller than the largest one (stray specks, extra items in shot)
+function keepMain(c, minShare = .2, doTrim = true) {
+  const w = c.width, h = c.height, ctx = c.getContext('2d', { willReadFrequently: true }), id = ctx.getImageData(0, 0, w, h), d = id.data;
+  const lab = new Int32Array(w * h), sizes = [0], q = new Int32Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    if (lab[i] || d[i * 4 + 3] < 60) continue;
+    const L = sizes.length; let qh = 0, qt = 0, n = 0; lab[i] = L; q[qt++] = i;
+    while (qh < qt) {
+      const j = q[qh++], x = j % w; n++;
+      for (const k of [x > 0 ? j - 1 : -1, x < w - 1 ? j + 1 : -1, j - w, j + w, x > 0 ? j - w - 1 : -1, x < w - 1 ? j + w + 1 : -1])
+        if (k >= 0 && k < w * h && !lab[k] && d[k * 4 + 3] >= 60) { lab[k] = L; q[qt++] = k; }
+    }
+    sizes.push(n);
+  }
+  const max = Math.max(...sizes);
+  let changed = false;
+  for (let i = 0; i < w * h; i++) {
+    const L = lab[i];
+    if ((L && sizes[L] < max * minShare)) { d[i * 4 + 3] = 0; changed = true; }
+  }
+  if (changed) ctx.putImageData(id, 0, 0);
+  return doTrim ? trim(c) : c;
+}
+
+// Remove faint leftovers (logos, reflections) that aren't touching the solid part of the piece
+function dropGhosts(c) {
+  const w = c.width, h = c.height, ctx = c.getContext('2d', { willReadFrequently: true }), id = ctx.getImageData(0, 0, w, h), d = id.data;
+  const solid = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) solid[i] = d[i * 4 + 3] >= 60 ? 1 : 0;
+  // Dilate the solid mask by 3px so soft edges and fine chains next to the piece survive
+  let near = solid;
+  for (let r = 0; r < 3; r++) {
+    const nx = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      nx[i] = near[i] || (x > 0 && near[i - 1]) || (x < w - 1 && near[i + 1]) || (y > 0 && near[i - w]) || (y < h - 1 && near[i + w]) ? 1 : 0;
+    }
+    near = nx;
+  }
+  for (let i = 0; i < w * h; i++) if (!near[i]) d[i * 4 + 3] = 0;
+  ctx.putImageData(id, 0, 0);
+}
+
+// Clean a full-size cutout and measure it: how much of the frame it covers and whether it runs into the edges
+function finishCut(c, type) {
+  keepMain(c, type === 'earrings' ? .06 : .2, false);
+  dropGhosts(c);
+  const w = c.width, h = c.height, d = c.getContext('2d').getImageData(0, 0, w, h).data, m = Math.max(2, Math.round(Math.min(w, h) * .01));
+  let n = 0, edge = false;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 60) { n++; if (x < m || y < m || x >= w - m || y >= h - m) edge = true; }
+  const out = trim(c);
+  out.area = n / (w * h); out.edge = edge;
+  return out;
+}
+
+const cutCache = new Map();
+let aiMod = null;
+const loadAI = () => aiMod || (aiMod = import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.8/+esm'));
+
+// In-browser AI background removal (model downloads once, then it's cached by the browser)
+async function aiCutout(src) {
+  const mod = await loadAI();
+  const blob = await mod.removeBackground(src);
+  const im = await loadImg(URL.createObjectURL(blob));
+  const c = canvasOf(im.naturalWidth, im.naturalHeight); c.getContext('2d').drawImage(im, 0, 0);
+  return c;
+}
+
+// up.cutMode: 'auto' picks per photo; 'ai' / 'simple' force a method (the "Try other cutout" button).
+// Auto prefers the AI cutout (handles satin, fabric, busts, props). It falls back to the simple colour-key
+// cutout when the AI clearly lost part of the piece and the simple one removed the background cleanly.
+async function getCutout(up, type) {
+  const mode = up.cutMode || 'auto';
+  const key = `${up.img}#${mode}#${type === 'earrings' ? 'pair' : 'one'}`;
+  if (!cutCache.has(key)) cutCache.set(key, (async () => {
+    const simple = finishCut(keyOut(await loadImg(up.img)), type);
+    simple.used = 'simple';
+    const simpleOk = !simple.edge && simple.area > .002 && simple.area < .6;
+    if (mode === 'simple') return simple;
+    try {
+      const ai = finishCut(await aiCutout(up.img), type);
+      ai.used = 'ai';
+      if (mode === 'ai') return ai;
+      return simpleOk && ai.area < simple.area * .5 ? simple : ai;
+    } catch { return simple; }
+  })());
+  return cutCache.get(key);
+}
+
+// Split a photo of a pair of earrings into left and right pieces (by the emptiest column near the middle)
+function splitPair(c) {
+  if (c.width < c.height * 1.05) return null;
+  const ctx = c.getContext('2d'), d = ctx.getImageData(0, 0, c.width, c.height).data;
+  const col = new Float32Array(c.width);
+  for (let x = 0; x < c.width; x++) { let s = 0; for (let y = 0; y < c.height; y += 2) s += d[(y * c.width + x) * 4 + 3]; col[x] = s; }
+  let best = -1, bestV = Infinity;
+  for (let x = Math.round(c.width * .3); x < c.width * .7; x++) if (col[x] < bestV) { bestV = col[x]; best = x; }
+  const max = Math.max(...col);
+  if (best < 0 || bestV > max * .15) return null;
+  const part = (x0, x1) => { const p = canvasOf(x1 - x0, c.height); p.getContext('2d').drawImage(c, x0, 0, x1 - x0, c.height, 0, 0, x1 - x0, c.height); return trim(p, 2); };
+  return [part(0, best), part(best, c.width)];
+}
+
+// Light the piece to sit in the photo: metal colour, a soft directional highlight, and the scene's ambient tint
+function litPiece(cut, metal, light, tint) {
+  const c = canvasOf(cut.width, cut.height), x = c.getContext('2d');
+  x.filter = METALS.find(m => m[0] === metal)[2]; x.drawImage(cut, 0, 0); x.filter = 'none';
+  const g = x.createLinearGradient(light < 0 ? 0 : c.width, 0, light < 0 ? c.width : 0, c.height);
+  g.addColorStop(0, 'rgba(255,248,235,.38)'); g.addColorStop(.55, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(20,10,0,.32)');
+  x.globalCompositeOperation = 'soft-light'; x.fillStyle = g; x.fillRect(0, 0, c.width, c.height);
+  if (tint) { x.globalCompositeOperation = 'multiply'; x.globalAlpha = .12; x.fillStyle = tint; x.fillRect(0, 0, c.width, c.height); x.globalAlpha = 1; }
+  x.globalCompositeOperation = 'destination-in'; x.drawImage(cut, 0, 0);
+  return c;
+}
+
+/* ============ Show on Model: AI photo (free Hugging Face Space) ============ */
+// Qwen-Image-Edit 2511 (open model, commercial use allowed) on a free community Space.
+// Free anonymous use is ~1 photo/day per connection; a free HF token raises the limit.
+const AI_SPACE = 'prithivMLmods/Qwen-Image-Edit-2511-LoRAs-Fast';
+const AI_STYLE = 'Anything2Real';  // keeps the model's face, clothes and background; tested best of the Space's styles
+let gradioMod = null;
+const loadGradio = () => gradioMod || (gradioMod = import('https://cdn.jsdelivr.net/npm/@gradio/client@2.6.0/dist/index.min.js'));
+const hfToken = () => { try { return localStorage.getItem('jewelix.hfToken') || ''; } catch { return ''; } };
+
+// Any image source → JPEG data URL, at most `max` px on the long side (keeps uploads quick)
+async function toDataURL(src, max = 1024) {
+  const im = await loadImg(src), k = Math.min(1, max / Math.max(im.naturalWidth, im.naturalHeight));
+  const c = canvasOf(Math.round(im.naturalWidth * k), Math.round(im.naturalHeight * k));
+  c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', .9);
+}
+
+function aiPrompt(type, metal) {
+  const m = metal && metal !== 'original' ? ` in ${METALS.find(x => x[0] === metal)[1].toLowerCase()}` : '';
+  const where = {
+    necklace: `wear the necklace from image 2${m} around her neck: the chain goes around the back of her neck and drapes naturally over her collarbones, with the pendant resting on her chest`,
+    earrings: `wear the earring from image 2${m}, hanging from her visible earlobe`,
+    ring: `wear the ring from image 2${m} on her ring finger, fitted naturally around the finger`,
+    bracelet: `wear the bracelet from image 2${m} around her wrist, sitting naturally on the skin`,
+  }[type];
+  return `Make the person in image 1 ${where}. Keep the jewellery design exactly identical to image 2: same shape, stones, metal colour and chain thickness. ` +
+    `Keep her face, hair, skin, clothes, pose, background and lighting exactly the same as image 1. Realistic shadows and reflections where the jewellery touches the skin. Photorealistic high-end jewellery catalogue photo.`;
+}
+
+function aiError(e) {
+  const t = `${e && e.title || ''} ${e && e.message || e || ''}`;
+  const wait = t.match(/Try again in ([0-9:]+)/);
+  if (/quota/i.test(t)) return `Today's free AI limit is used up${wait ? ` – resets in ${wait[1].replace(/^(\d+):(\d+):\d+$/, '$1 h $2 min')}` : ''}. ${hfToken() ? 'Your free token\'s limit is used up too.' : 'Add a free Hugging Face token in Model Options (left) for more.'}`;
+  if (/sleep|building|paused|not found|Could not resolve|fetch/i.test(t)) return 'The free AI service is offline right now. Try again in a few minutes.';
+  return 'The free AI service is busy or failed. Try again in a minute.';
+}
+
+async function pieceOnWhite(up) {
+  let cut = await getCutout(up, state.type);
+  if (state.type === 'earrings') cut = (splitPair(cut) || [cut])[0];  // a pair photo → send one earring
+  const S = 1024, c = canvasOf(S, S), x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, S, S);
+  const k = Math.min(S * .86 / cut.width, S * .86 / cut.height), w = cut.width * k, h = cut.height * k;
+  x.drawImage(cut, (S - w) / 2, (S - h) / 2, w, h);
+  return c.toDataURL('image/jpeg', .92);
+}
+
+// Show on Model: send the model photo + the cut-out piece to the free AI and return the finished photo
+async function generateOnModel(up) {
+  fitModelToType();
+  const model = MODELS.find(m => m.id === state.modelId), t0 = Date.now();
+  // The cut-out piece goes on plain white so the AI can't borrow the product photo's background
+  const [{ Client }, modelImg, piece] = await Promise.all([loadGradio(), toDataURL(model.src), pieceOnWhite(up)]);
+  const token = hfToken();
+  const app = await Client.connect(AI_SPACE, token ? { token } : {});
+  const res = await app.predict('/edit_image', {
+    images_b64_json: JSON.stringify([modelImg, piece]), prompt: aiPrompt(state.type, state.studio.metal),
+    lora_adapter: AI_STYLE, seed: 0, randomize_seed: true, guidance_scale: 1.0, steps: 4,
+  });
+  const out = res.data && res.data[0] && (res.data[0].image || res.data[0].url);
+  if (!out) throw new Error('No image returned');
+  return { photo: out, photoImg: await loadImg(out), model, secs: Math.round((Date.now() - t0) / 1000) };
+}
+
+/* ============ Enhance + Blend renders ============ */
+function drawEnhanced(cut, metal) {
+  const S = 1000, c = canvasOf(S, S), x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, S, S);
+  const k = Math.min(S * .72 / cut.width, S * .66 / cut.height), w = cut.width * k, h = cut.height * k, ox = (S - w) / 2, oy = (S - h) / 2 - S * .02;
+  // Soft floor shadow
+  const g = x.createRadialGradient(S / 2, oy + h + 8, 2, S / 2, oy + h + 8, w * .45);
+  g.addColorStop(0, 'rgba(0,0,0,.14)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  x.save(); x.translate(S / 2, oy + h + 8); x.scale(1, .12); x.translate(-S / 2, -(oy + h + 8)); x.fillStyle = g; x.fillRect(0, oy + h - w, S, w * 2); x.restore();
+  const lit = litPiece(cut, metal, -1, null);
+  x.shadowColor = 'rgba(30,20,10,.18)'; x.shadowBlur = 14; x.shadowOffsetY = 6;
+  x.drawImage(lit, ox, oy, w, h);
+  return c;
+}
+
+function drawBlend(ca, cb, mix) {
+  const S = 1000, c = canvasOf(S, S), x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, S, S);
+  const fit = (cut, sc) => { const k = Math.min(S * sc / cut.width, S * sc / cut.height); return [cut.width * k, cut.height * k]; };
+  const [wa, ha] = fit(ca, .7), [wb, hb] = fit(cb, .56 + mix / 500);
+  x.shadowColor = 'rgba(30,20,10,.16)'; x.shadowBlur = 12; x.shadowOffsetY = 5;
+  x.globalAlpha = Math.min(1, (100 - mix) / 60 + .15); x.drawImage(ca, (S - wa) / 2, (S - ha) / 2, wa, ha);
+  x.globalAlpha = Math.min(1, mix / 60 + .15); x.globalCompositeOperation = 'multiply'; x.drawImage(cb, (S - wb) / 2, (S - hb) / 2, wb, hb);
+  x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
+  return c;
+}
+
+/* ============ UI helpers ============ */
+function loaderHTML(kind) {
+  return `<div class="shimmer absolute inset-0"></div><div class="relative grid h-full place-items-center p-6 text-center"><div>
     <div class="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-gold-light border-t-gold-deep"></div>
     <div class="load-msg text-sm font-medium">${MSGS[kind][0]}</div>
-    <div class="mx-auto mt-3 h-1 w-40 overflow-hidden rounded-full bg-line"><div class="load-bar gold-grad h-full w-0 transition-all duration-[1900ms] ease-linear"></div></div></div></div>`;
-  requestAnimationFrame(() => requestAnimationFrame(() => { const b = box.querySelector('.load-bar'); if (b) b.style.width = '100%'; }));
+    <div class="mx-auto mt-3 h-1 w-40 overflow-hidden rounded-full bg-line"><div class="load-bar gold-grad h-full w-0 transition-all ${kind === 'model' ? 'duration-[45000ms] ease-out' : 'duration-[1900ms] ease-linear'}"></div></div>
+    ${kind === 'model' ? '<div class="load-time mt-2 font-mono text-[10px] text-ink/50">0s</div>' : ''}</div></div>`;
 }
-
-// Fake 2-second AI call that cycles loading messages
-function simulate(box, kind, done) {
-  loader(box, kind);
-  let i = 0; const iv = setInterval(() => { const m = box.querySelector('.load-msg'); if (m) m.textContent = MSGS[kind][++i % 3]; }, 700);
-  setTimeout(() => { clearInterval(iv); done(); }, 2000);
+// Show the loader while `work` runs (at least ~2 s so it reads as processing)
+async function withLoader(box, kind, work) {
+  box.innerHTML = loaderHTML(kind);
+  requestAnimationFrame(() => requestAnimationFrame(() => { const b = box.querySelector('.load-bar'); if (b) b.style.width = '100%'; }));
+  const msgs = MSGS[kind], slow = kind === 'model', t0 = Date.now();
+  let i = 0; const iv = setInterval(() => { const m = box.querySelector('.load-msg'); if (m) m.textContent = msgs[++i % msgs.length]; }, slow ? 4000 : 700);
+  const tv = slow && setInterval(() => { const t = box.querySelector('.load-time'); if (t) t.textContent = Math.round((Date.now() - t0) / 1000) + 's'; }, 1000);
+  try { const [r] = await Promise.all([work(), wait(1900)]); return r; } finally { clearInterval(iv); clearInterval(tv); }
 }
 
 const empty = (title, sub) => `<div class="grid h-full place-items-center p-6 text-center"><div>
   <div class="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-full border border-gold/50 text-2xl">✨</div>
   <div class="font-serif text-xl">${title}</div><p class="mt-1 text-xs text-ink/50">${sub}</p></div></div>`;
 
-/* ============ Shared: upload boxes ============ */
+function addRaw(up) {
+  if (state.raw.some(r => r.img === up.img)) return;
+  state.raw.unshift({ id: 'r' + Date.now(), name: up.name, img: up.img, inv: up.inv || null, type: up.type || null, time: new Date() });
+}
+
+/* ============ Upload boxes ============ */
 function dropHTML(key) {
+  const inv = key === 'studio' || key.startsWith('blend');
   return `<label data-dz="${key}" class="relative flex min-h-[170px] cursor-pointer flex-col items-center justify-center gap-1 overflow-hidden rounded-xl border border-dashed border-gold/60 bg-ivory px-4 py-5 text-center transition hover:bg-gold-light/10">
       <input type="file" accept="image/*" class="hidden" />
       <div class="dz-empty flex flex-col items-center gap-1">
@@ -276,6 +643,8 @@ function dropHTML(key) {
       </div>
       <img class="dz-img hidden h-36 w-full object-contain" alt="Uploaded jewellery" />
     </label>
+    ${inv ? `<button data-inv="${key}" class="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-ink/80 bg-white px-4 py-2.5 text-sm font-medium transition hover:bg-ink hover:text-white">
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h18"/></svg> Choose from inventory</button>` : ''}
     <div class="dz-row mt-2 hidden items-center justify-between gap-2 rounded-lg bg-ivory px-3 py-1.5 text-xs">
       <span class="dz-name truncate font-medium"></span>
       <button class="dz-clear shrink-0 font-mono text-[10px] tracking-wider text-ink/50 hover:text-ink">REMOVE ✕</button>
@@ -284,10 +653,15 @@ function dropHTML(key) {
 
 function setUpload(key, up) {
   const old = state.uploads[key];
-  if (old && old.blob) URL.revokeObjectURL(old.img);
+  if (old && old.blob && !state.raw.some(r => r.img === old.img)) URL.revokeObjectURL(old.img);
   state.uploads[key] = up;
-  if (key === 'studio') { state.studio = { status: 'idle', kind: null, metal: 'original' }; state.attached.studio = false; }
-  if (key.startsWith('blend')) { state.blend.status = 'idle'; state.attached.blend = false; }
+  if (up) addRaw(up);
+  if (key === 'studio') {
+    if (up && up.inv) state.type = up.inv.type;
+    fitModelToType();
+    state.studio = { status: 'idle', kind: null, metal: 'original' }; state.added.studio = false;
+  }
+  if (key.startsWith('blend')) { state.blend.status = 'idle'; state.added.blend = false; }
   if (key === 'search') state.search.status = 'idle';
   render();
 }
@@ -305,8 +679,13 @@ function wireDrop(key) {
   input.addEventListener('change', e => { take(e.target.files[0]); e.target.value = ''; });
   ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('sel'); }));
   ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('sel'); }));
-  dz.addEventListener('drop', e => take(e.dataTransfer.files[0]));
+  dz.addEventListener('drop', e => {
+    const sku = e.dataTransfer.getData('text/jewelix-sku');
+    if (sku) { if (!busy()) useInventory(key, sku); return; }
+    take(e.dataTransfer.files[0]);
+  });
   host.querySelector('.dz-clear').addEventListener('click', e => { e.preventDefault(); if (!busy()) setUpload(key, null); });
+  const invBtn = host.querySelector('[data-inv]'); if (invBtn) invBtn.addEventListener('click', () => openInventory(key));
 }
 
 function renderDrop(key) {
@@ -314,67 +693,95 @@ function renderDrop(key) {
   host.querySelector('.dz-empty').classList.toggle('hidden', !!up);
   const img = host.querySelector('.dz-img'); img.classList.toggle('hidden', !up); if (up) img.src = up.img;
   const row = host.querySelector('.dz-row'); row.classList.toggle('hidden', !up); row.classList.toggle('flex', !!up);
-  if (up) host.querySelector('.dz-name').textContent = up.name;
+  if (up) host.querySelector('.dz-name').textContent = up.inv ? `${up.inv.sku} · ${up.inv.name}` : up.name;
 }
 
-/* ============ Shared: action bar ============ */
-function actionsHTML(key) {
+/* ============ Inventory picker ============ */
+let invTarget = 'studio';
+function openInventory(key) { invTarget = key; renderInventory(); $('invModal').classList.remove('hidden'); $('invModal').classList.add('flex'); }
+function closeInventory() { $('invModal').classList.add('hidden'); $('invModal').classList.remove('flex'); }
+function useInventory(key, sku) {
+  const it = INVENTORY.find(i => i.sku === sku); if (!it) return;
+  setUpload(key, { name: `${it.sku} ${it.name}`, img: it.img, inv: it, type: it.type });
+  closeInventory(); toast(`${it.name} loaded from inventory`);
+}
+function renderInventory() {
+  $('invFilters').innerHTML = [['all', 'All'], ...TYPES].map(([k, l]) => `<button data-f="${k}" class="shrink-0 rounded-full border border-line px-3 py-1 text-xs font-medium hover:border-gold ${state.invFilter === k ? 'sel' : ''}">${l}</button>`).join('');
+  $('invGrid').innerHTML = INVENTORY.filter(i => state.invFilter === 'all' || i.type === state.invFilter).map(i => `
+    <button draggable="true" data-sku="${i.sku}" class="inv-item group overflow-hidden rounded-xl border border-line bg-white text-left transition hover:border-gold">
+      <div class="aspect-square overflow-hidden bg-ivory"><img src="${i.img.replace('w=1000', 'w=400')}" class="h-full w-full object-cover transition group-hover:scale-105" alt="${esc(i.name)}" draggable="false"/></div>
+      <div class="p-3"><div class="font-mono text-[10px] text-gold-deep">${i.sku}</div><div class="truncate text-sm font-medium">${esc(i.name)}</div>
+      <div class="mt-1 text-[11px] text-ink/50">${i.purity} · ${i.weight}${i.carat !== '—' ? ' · ' + i.carat : ''}</div></div>
+    </button>`).join('');
+}
+
+/* ============ Action bar ============ */
+function actionsHTML() {
   return `<div class="act mt-6 grid gap-3 border-t border-line pt-5 sm:grid-cols-3">
-    <button class="act-attach flex items-center justify-center gap-2 rounded-xl bg-ink px-4 py-3 text-sm font-medium text-white transition hover:bg-black"></button>
+    <button class="act-add flex items-center justify-center gap-2 rounded-xl bg-ink px-4 py-3 text-sm font-medium text-white transition hover:bg-black"></button>
     <a class="act-wa flex items-center justify-center gap-2 rounded-xl bg-[#1FA855] px-4 py-3 text-sm font-medium text-white transition hover:bg-[#178F47]" target="_blank" rel="noopener">
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.3 14.2c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9 0-1.4.7-2 1-2.3.3-.3.6-.3.8-.3h.6c.2 0 .4 0 .6.5l.9 2.1c.1.2.1.4 0 .6l-.4.6-.4.4c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.5.3.1.2.1.7-.1 1.3Z"/></svg>
       Share to WhatsApp</a>
     <button class="act-dl flex items-center justify-center gap-2 rounded-xl border border-ink/80 px-4 py-3 text-sm font-medium transition hover:bg-ink hover:text-white">
-      <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v12m0 0-4-4m4 4 4-4M4 20h16"/></svg>Download 4K</button>
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v12m0 0-4-4m4 4 4-4M4 20h16"/></svg>Download</button>
   </div>`;
 }
+
+// Final image for the current result (no selection outline)
+function resultCanvas(key) {
+  if (key === 'blend') return blendCanvas;
+  if (state.studio.kind === 'model') {
+    const im = scene.photoImg, c = canvasOf(im.naturalWidth, im.naturalHeight); c.getContext('2d').drawImage(im, 0, 0); return c;
+  }
+  return enhanceCanvas;
+}
+function resultInfo(key) {
+  if (key === 'blend') {
+    const a = state.uploads.blendA, b = state.uploads.blendB;
+    return { title: 'New design JX-NEW-' + (2000 + state.blend.mix), kind: 'Blend', inv: null, sub: `${a.inv ? a.inv.name : a.name} + ${b.inv ? b.inv.name : b.name}` };
+  }
+  const up = state.uploads.studio, s = state.studio, metal = METALS.find(m => m[0] === s.metal)[1];
+  return { title: up.inv ? up.inv.name : up.name, kind: s.kind === 'model' ? 'On model · ' + scene.model.name : 'Enhanced', inv: up.inv || null, metal: s.metal === 'original' ? null : metal, sub: '' };
+}
+
 function wireActions(key) {
   const host = document.querySelector(`[data-actions="${key}"]`);
-  host.innerHTML = actionsHTML(key);
-  host.querySelector('.act-attach').addEventListener('click', () => {
-    state.attached[key] = !state.attached[key]; render();
-    toast(state.attached[key] ? 'Attached to job card' : 'Removed from job card');
+  host.innerHTML = actionsHTML();
+  host.querySelector('.act-add').addEventListener('click', () => {
+    if (state.added[key]) { state.tab = 'catalog'; return render(); }
+    const c = resultCanvas(key); if (!c) return;
+    const t = canvasOf(Math.round(c.width * .8), Math.round(c.height * .8)); t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
+    state.catalog.unshift({ id: 'c' + Date.now(), img: t.toDataURL('image/jpeg', .86), ...resultInfo(key), time: Date.now() });
+    saveCatalog(); state.added[key] = true; render(); toast('Added to Catalog');
   });
-  host.querySelector('.act-dl').addEventListener('click', () => toast('Preparing 4K download… (demo)'));
+  host.querySelector('.act-dl').addEventListener('click', () => {
+    const c = resultCanvas(key); if (!c) return;
+    const a = document.createElement('a'); a.download = `jewelix-${key === 'blend' ? 'blend' : state.studio.kind}-${Date.now()}.png`;
+    a.href = c.toDataURL('image/png'); a.click();
+  });
 }
 function renderActions(key, ready, msg) {
   const host = document.querySelector(`[data-actions="${key}"]`);
   host.querySelector('.act').classList.toggle('opacity-40', !ready);
   host.querySelector('.act').classList.toggle('pointer-events-none', !ready);
-  host.querySelector('.act-attach').innerHTML = state.attached[key]
-    ? `<svg class="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg> Attached to Job Card`
-    : `<svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12.5 12.5 21a5 5 0 0 1-7-7L14 5.5a3.5 3.5 0 0 1 5 5L10.5 19a2 2 0 0 1-3-3l8-8"/></svg> Attach to Job Card`;
-  host.querySelector('.act-wa').href = 'https://wa.me/?text=' + encodeURIComponent(msg);
+  host.querySelector('.act-add').innerHTML = state.added[key]
+    ? `<svg class="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg> Added · View Catalog`
+    : `<svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Add to Catalog`;
+  if (msg !== undefined) host.querySelector('.act-wa').href = 'https://wa.me/?text=' + encodeURIComponent(msg);
 }
 
-/* ============ Studio: Enhance + Show on Model ============ */
-const metalClass = () => METALS.find(m => m[0] === state.studio.metal)[2];
-
-function enhancedHTML(up) {
-  // Stand-in until the AI backend exists: brighten the photo on white
-  const src = up.img;
-  const fx = 'style="filter:brightness(1.12) contrast(1.15) saturate(1.1);mix-blend-mode:multiply"';
-  return `<div class="fade-in grid h-full place-items-center bg-white p-6">
-    <div class="relative h-full w-full"><img src="${src}" ${fx} class="${metalClass()} h-full w-full object-contain transition" alt="Enhanced jewellery"/>
-    <div class="absolute bottom-[6%] left-1/2 h-3 w-1/2 -translate-x-1/2 rounded-full bg-black/10 blur-md"></div></div></div>`;
+function detailsHTML(inv, metalLabel) {
+  const cell = (k, v) => `<div class="rounded-lg bg-white px-3 py-2"><div class="font-mono text-[9px] tracking-[.15em] text-ink/50">${k}</div><div class="text-sm font-semibold">${esc(v)}</div></div>`;
+  return `<div class="rounded-xl border border-gold/50 bg-gold-light/10 p-4">
+    <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2"><div><span class="font-mono text-xs text-gold-deep">${inv.sku}</span> <span class="font-serif text-lg">${esc(inv.name)}</span></div>
+    <span class="text-[11px] text-ink/50">From inventory${metalLabel ? ' · shown in ' + metalLabel : ''}</span></div>
+    <div class="grid grid-cols-2 gap-2 sm:grid-cols-5">${cell('PURITY', inv.purity)}${cell('METAL', inv.metal)}${cell('WEIGHT', inv.weight)}${cell('CARAT', inv.carat)}${cell('STONES', inv.stones)}</div></div>`;
 }
 
-function modelHTML(up) {
-  const src = up.img;
-  const closeUp = (label) => `<div class="absolute bottom-3 right-3 w-[42%] overflow-hidden rounded-xl border-2 border-white bg-white shadow-lg">
-    <img src="${src}" class="${metalClass()} aspect-square w-full object-contain p-2" alt="Close-up"/>
-    <span class="block bg-ink py-1 text-center font-mono text-[9px] tracking-widest text-gold-light">${label}</span></div>`;
-  const place = {
-    // Mock only: real placement on the body comes from the AI backend, so show the piece as a close-up inset
-    necklace: closeUp('NECKLACE CLOSE-UP'),
-    earrings: closeUp('EARRING CLOSE-UP'),
-    ring: closeUp('HAND CLOSE-UP'),
-    bracelet: closeUp('WRIST CLOSE-UP'),
-  }[state.type];
-  const tint = { 'Warm Indian / Bridal Studio': 'sepia(.18) saturate(1.15)', 'Fair Editorial': 'brightness(1.06) saturate(.85)', 'Natural Daylight': 'brightness(1.04) contrast(1.04)' }[state.preset];
-  return `<div class="fade-in relative h-full w-full">
-    <img src="${MODEL_PHOTO}" class="h-full w-full object-cover" style="filter:${tint}" alt="Model"/>${place}
-    <span class="absolute left-3 top-3 rounded-full bg-white/85 px-2.5 py-1 font-mono text-[10px] tracking-wider backdrop-blur">ON MODEL · ${state.preset.split(' /')[0].toUpperCase()}</span></div>`;
+/* ============ Studio render ============ */
+function fitModelToType() {
+  const m = MODELS.find(x => x.id === state.modelId);
+  if (!m.types.includes(state.type)) state.modelId = MODELS.find(x => x.types.includes(state.type)).id;
 }
 
 function renderStudio() {
@@ -383,35 +790,66 @@ function renderStudio() {
   $('step2Title').textContent = isModel ? 'Model Options' : 'Enhance Options';
   $('modelOpts').classList.toggle('hidden', !isModel);
   $('typeChips').innerHTML = TYPES.map(([k, l]) => `<button data-type="${k}" class="rounded-lg border border-line px-1 py-2 text-xs font-medium transition hover:border-gold/60 ${state.type === k ? 'sel' : ''}">${l}</button>`).join('');
+  $('modelPicker').innerHTML = MODELS.filter(m => m.types.includes(state.type)).map(m => `
+    <button data-model="${m.id}" class="overflow-hidden rounded-lg border-2 border-line transition hover:border-gold/60 ${state.modelId === m.id ? 'sel' : ''}">
+      <img src="${m.src.replace('w=1200&h=1500', 'w=160&h=200')}" class="aspect-[4/5] w-full object-cover" alt="${m.name}"/><span class="block py-1 text-center text-[10px] font-medium">${m.name}</span></button>`).join('');
   $('runBtn').textContent = isModel ? '👤 Show on Model ✨' : '✨ Enhance Photo';
   $('runBtn').disabled = !up || s.status === 'loading';
-  $('runHint').textContent = !up ? 'Upload a photo to begin' : isModel ? 'Places the piece on a model · ≈ 2 sec' : 'White background, studio light · ≈ 2 sec';
+  $('runHint').textContent = !up ? 'Upload a photo or choose from inventory' : isModel ? `AI photo · about 10–60 seconds · ${hfToken() ? 'using your free token' : 'free, ~1 a day without a token'}` : 'Removes the background, studio light on white';
   $('outTitle').textContent = isModel ? 'Show on Model' : 'Enhance';
-  $('outMeta').innerHTML = up ? `<div class="font-mono text-gold-deep">${TYPES.find(t => t[0] === state.type)[1].toUpperCase()}</div><div class="max-w-[220px] truncate">${up.name}</div>` : `<div class="font-mono text-ink/40">NO PHOTO YET</div>`;
+  $('outMeta').innerHTML = up ? `<div class="font-mono text-gold-deep">${TYPES.find(t => t[0] === state.type)[1].toUpperCase()}</div><div class="max-w-[220px] truncate">${esc(up.inv ? up.inv.sku + ' · ' + up.inv.name : up.name)}</div>` : `<div class="font-mono text-ink/40">NO PHOTO YET</div>`;
 
-  $('inTag').textContent = up ? 'INPUT' : '—';
+  $('inTag').textContent = up ? (up.inv ? 'INVENTORY' : 'INPUT') : '—';
   $('inBox').innerHTML = up ? `<img src="${up.img}" class="h-full w-full object-contain" alt="Original"/>` : `<div class="p-6 text-center text-sm text-ink/40">Your photo appears here</div>`;
 
+  const showModel = s.status === 'done' && s.kind === 'model';
+  $('outGrid').className = 'grid gap-4 ' + (showModel ? 'md:grid-cols-[1fr_1.4fr]' : 'md:grid-cols-2');
   const box = $('outBox');
-  if (s.status === 'done' && s.kind === 'model') box.innerHTML = modelHTML(up);
-  else if (s.status === 'done') box.innerHTML = enhancedHTML(up);
-  else if (s.status === 'idle') box.innerHTML = empty(up ? (isModel ? 'Ready to place on model' : 'Ready to enhance') : 'Waiting for a photo', isModel ? state.preset : 'Background → pure white');
+  box.className = 'relative overflow-hidden rounded-xl border border-line ' + (showModel ? 'aspect-[4/5] bg-ivory' : 'aspect-square bg-ivory');
+  if (showModel) {
+    if (!box.querySelector('img.ai-photo') || box.querySelector('img.ai-photo').src !== scene.photo)
+      box.innerHTML = `<img class="ai-photo fade-in block h-full w-full object-cover" src="${scene.photo}" alt="Jewellery on model"/>`;
+  } else if (s.status === 'done') {
+    enhanceCanvas = drawEnhanced(scene.enhCut, s.metal);
+    enhanceCanvas.className = 'fade-in block h-full w-full';
+    box.innerHTML = ''; box.appendChild(enhanceCanvas);
+  } else if (s.status === 'error') {
+    box.innerHTML = `<div class="grid h-full place-items-center p-6 text-center"><div>
+      <div class="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-full border border-red-200 bg-red-50 text-2xl">!</div>
+      <div class="font-serif text-xl">Couldn't create the photo</div><p class="mx-auto mt-1 max-w-xs text-xs text-red-700">${esc(s.msg)}</p>
+      <button data-retry class="mt-4 rounded-xl bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black">Try again</button></div></div>`;
+  } else if (s.status === 'idle') box.innerHTML = empty(up ? (isModel ? 'Ready to show on model' : 'Ready to enhance') : 'Waiting for a photo', isModel ? `${MODELS.find(m => m.id === state.modelId).name} · realistic AI photo` : 'Background → pure white');
   $('outTag').textContent = s.status === 'done' ? (s.kind === 'model' ? 'ON MODEL' : 'ENHANCED') + (s.metal !== 'original' ? ' · ' + s.metal.toUpperCase() : '') : '—';
 
-  // Metal bar only for results
+  const metalLabel = s.metal === 'original' ? null : METALS.find(m => m[0] === s.metal)[1];
+  $('detailsBox').classList.toggle('hidden', !(s.status === 'done' && up && up.inv));
+  if (s.status === 'done' && up && up.inv) $('detailsBox').innerHTML = detailsHTML(up.inv, metalLabel);
+
   $('metalBar').classList.toggle('hidden', s.status !== 'done');
   $('toModel').classList.toggle('hidden', s.kind === 'model');
-  $('metalChips').innerHTML = METALS.map(([k, l, cls]) => `<button data-metal="${k}" class="flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-xs font-medium transition hover:border-gold/60 ${s.metal === k ? 'sel' : ''}">
+  $('metalChips').innerHTML = METALS.map(([k, l]) => `<button data-metal="${k}" class="flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-xs font-medium transition hover:border-gold/60 ${s.metal === k ? 'sel' : ''}">
     <span class="h-4 w-4 rounded-full" style="background:${{ original: 'conic-gradient(#C8A152,#E8B4A0,#D9D9D9,#C8A152)', yellow: 'linear-gradient(135deg,#B8862E,#F1D27A)', rose: 'linear-gradient(135deg,#B76E5A,#F0C2B0)', white: 'linear-gradient(135deg,#9EA3A8,#F2F2F2)' }[k]}"></span>${l} ✨</button>`).join('');
 
-  renderActions('studio', s.status === 'done', `Jewelix AI · ${up ? up.name : ''} (${s.kind === 'model' ? 'on model' : 'enhanced'}${s.metal !== 'original' ? ', ' + s.metal + ' gold' : ''})`);
+  const inv = up && up.inv;
+  renderActions('studio', s.status === 'done', `Jewelix · ${inv ? `${inv.name} (${inv.sku}) – ${inv.purity}, ${inv.weight}${inv.carat !== '—' ? ', ' + inv.carat : ''}` : (up ? up.name : '')}${metalLabel ? ' · in ' + metalLabel : ''}`);
 }
 
-function runStudio(kind) {
+async function runStudio(kind) {
   const up = state.uploads.studio; if (!up || busy()) return;
-  state.studio = { status: 'loading', kind, metal: state.studio.metal }; state.attached.studio = false;
+  state.studio = { status: 'loading', kind, metal: state.studio.metal }; state.added.studio = false;
   render();
-  simulate($('outBox'), kind, () => { state.studio.status = 'done'; render(); toast(kind === 'model' ? 'Model shot ready' : 'Enhanced on white background'); });
+  try {
+    await withLoader($('outBox'), kind, async () => {
+      if (kind === 'model') Object.assign(scene, await generateOnModel(up));
+      else scene.enhCut = await getCutout(up, state.type);
+    });
+    state.studio.status = 'done'; render();
+    toast(kind === 'model' ? `Ready in ${scene.secs}s` : 'Background removed');
+  } catch (err) {
+    if (kind === 'model') Object.assign(state.studio, { status: 'error', msg: aiError(err) });
+    else { state.studio.status = 'idle'; toast('Could not process this photo – try another'); }
+    render();
+  }
 }
 
 /* ============ Blend ============ */
@@ -423,13 +861,10 @@ function renderBlend() {
   $('blendTag').textContent = s.status === 'done' ? 'JX-NEW-' + (2000 + s.mix) : '—';
   const box = $('blendBox');
   if (s.status === 'done') {
-    const ia = a.img, ib = b.img;
-    box.innerHTML = `<div class="fade-in relative h-full w-full bg-white">
-      <img src="${ia}" class="absolute inset-0 h-full w-full object-contain p-6" style="opacity:${(100 - s.mix) / 100 + .2};filter:contrast(1.1)"/>
-      <img src="${ib}" class="absolute inset-0 h-full w-full scale-90 object-contain p-6" style="opacity:${s.mix / 100 + .2};mix-blend-mode:multiply;filter:contrast(1.1)"/>
-      <span class="absolute left-3 top-3 rounded-full bg-ink px-2.5 py-1 font-mono text-[10px] tracking-wider text-gold-light">NEW DESIGN</span></div>`;
+    blendCanvas = drawBlend(s.cutA, s.cutB, s.mix); blendCanvas.className = 'fade-in block h-full w-full';
+    box.innerHTML = ''; box.appendChild(blendCanvas);
   } else if (s.status === 'idle') box.innerHTML = empty(a && b ? 'Ready to blend' : 'Add two designs', 'A new piece inspired by both');
-  renderActions('blend', s.status === 'done', `New Jewelix design JX-NEW-${2000 + s.mix}, blended from ${a ? a.name : ''} + ${b ? b.name : ''}`);
+  renderActions('blend', s.status === 'done', `New Jewelix design JX-NEW-${2000 + s.mix}`);
 }
 
 /* ============ Inventory search ============ */
@@ -437,7 +872,6 @@ function renderSearch() {
   renderDrop('search');
   const up = state.uploads.search, s = state.search, out = $('searchOut');
   $('searchBtn').disabled = !up || s.status === 'loading';
-  $('matchBadge').classList.add('hidden');
   if (s.status === 'loading') {
     out.innerHTML = `<div class="grid gap-5 md:grid-cols-[220px_1fr]">
       <div class="relative aspect-square overflow-hidden rounded-xl border border-line"><img src="${up.img}" class="h-full w-full object-cover"/><div class="scan-line"></div></div>
@@ -446,8 +880,6 @@ function renderSearch() {
     return;
   }
   if (s.status !== 'done') { out.innerHTML = `<div class="aspect-[16/7]">${empty(up ? 'Ready to search' : 'Upload a reference photo', 'We will look through every piece in stock')}</div>`; return; }
-
-  // No stock data yet: results will come from the ERP inventory once connected
   out.innerHTML = `<div class="fade-in grid gap-5 md:grid-cols-[220px_1fr]">
     <div><p class="mb-2 font-mono text-[10px] tracking-[.18em] text-ink/60">CLIENT PHOTO</p>
       <div class="aspect-square overflow-hidden rounded-xl border border-line bg-ivory"><img src="${up.img}" class="h-full w-full object-cover"/></div></div>
@@ -460,41 +892,106 @@ function renderSearch() {
   </div>`;
 }
 
+/* ============ Raw + Catalog ============ */
+function renderRaw() {
+  $('rawCount').textContent = state.raw.length ? state.raw.length : '';
+  if (!state.raw.length) { $('rawGrid').innerHTML = `<div class="aspect-[16/6]">${empty('No raw photos yet', 'Photos you upload or pick from inventory show up here')}</div>`; return; }
+  $('rawGrid').innerHTML = `<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">${state.raw.map(r => `
+    <div class="overflow-hidden rounded-xl border border-line">
+      <div class="checker aspect-square"><img src="${r.img}" class="h-full w-full object-contain" alt="${esc(r.name)}"/></div>
+      <div class="p-3">
+        <div class="flex items-center justify-between gap-2"><span class="truncate text-sm font-medium">${esc(r.inv ? r.inv.name : r.name)}</span>
+          <span class="shrink-0 rounded bg-ivory px-1.5 py-0.5 font-mono text-[9px] text-ink/60">${r.inv ? 'INVENTORY' : 'UPLOAD'}</span></div>
+        <div class="mb-2 text-[11px] text-ink/50">${r.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${r.inv ? ' · ' + r.inv.sku : ''}</div>
+        <div class="grid grid-cols-2 gap-1.5">
+          <button data-raw-use="${r.id}" data-to="enhance" class="rounded-lg border border-line px-2 py-1.5 text-[11px] font-medium hover:border-gold">✨ Enhance</button>
+          <button data-raw-use="${r.id}" data-to="model" class="rounded-lg border border-line px-2 py-1.5 text-[11px] font-medium hover:border-gold">👤 On model</button>
+        </div>
+      </div>
+    </div>`).join('')}</div>`;
+}
+
+function renderCatalog() {
+  $('catCount').textContent = state.catalog.length ? state.catalog.length : '';
+  if (!state.catalog.length) { $('catGrid').innerHTML = `<div class="aspect-[16/6]">${empty('Your catalog is empty', 'Use “Add to Catalog” on any finished result')}</div>`; return; }
+  $('catGrid').innerHTML = `<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">${state.catalog.map(c => `
+    <div class="overflow-hidden rounded-xl border border-line bg-white">
+      <div class="relative bg-ivory"><img src="${c.img}" class="w-full" alt="${esc(c.title)}"/>
+        <span class="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 font-mono text-[10px] tracking-wider">${esc(c.kind.toUpperCase())}</span></div>
+      <div class="p-4">
+        ${c.inv ? `<div class="font-mono text-[10px] text-gold-deep">${c.inv.sku}</div>` : ''}
+        <div class="font-serif text-lg leading-snug">${esc(c.title)}</div>
+        ${c.sub ? `<div class="text-xs text-ink/50">${esc(c.sub)}</div>` : ''}
+        ${c.inv ? `<div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">${[c.inv.purity, c.metal || c.inv.metal, c.inv.weight, c.inv.carat !== '—' ? c.inv.carat : null].filter(Boolean).map(v => `<span class="rounded-full bg-ivory px-2 py-0.5">${esc(v)}</span>`).join('')}</div>` : (c.metal ? `<div class="mt-2 text-[11px]"><span class="rounded-full bg-ivory px-2 py-0.5">${esc(c.metal)}</span></div>` : '')}
+        <div class="mt-3 grid grid-cols-3 gap-1.5">
+          <a href="${c.img}" download="jewelix-${c.id}.jpg" class="rounded-lg border border-line px-2 py-1.5 text-center text-[11px] font-medium hover:border-gold">Download</a>
+          <a target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('Jewelix · ' + c.title + (c.inv ? ` (${c.inv.sku}) – ${c.inv.purity}, ${c.inv.weight}` : ''))}" class="rounded-lg bg-[#1FA855] px-2 py-1.5 text-center text-[11px] font-medium text-white hover:bg-[#178F47]">WhatsApp</a>
+          <button data-cat-del="${c.id}" class="rounded-lg border border-line px-2 py-1.5 text-[11px] font-medium text-ink/60 hover:border-red-300 hover:text-red-600">Remove</button>
+        </div>
+      </div>
+    </div>`).join('')}</div>`;
+}
+
 /* ============ Tabs + render ============ */
 function render() {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('tab-on', t.dataset.tab === state.tab));
   const studio = state.tab === 'enhance' || state.tab === 'model';
   $('view-studio').classList.toggle('hidden', !studio);
-  $('view-blend').classList.toggle('hidden', state.tab !== 'blend');
-  $('view-search').classList.toggle('hidden', state.tab !== 'search');
-  renderStudio(); renderBlend(); renderSearch();
+  ['blend', 'search', 'raw', 'catalog'].forEach(v => $('view-' + v).classList.toggle('hidden', state.tab !== v));
+  renderStudio(); renderBlend(); renderSearch(); renderRaw(); renderCatalog();
 }
 
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
   if (busy()) return;
-  const wasStudio = state.tab === 'enhance' || state.tab === 'model';
-  state.tab = t.dataset.tab;
-  if (wasStudio && (state.tab === 'enhance' || state.tab === 'model') && state.studio.status === 'done') { /* keep result */ }
-  render();
+  const next = t.dataset.tab;
+  // Switching between Enhance and Show on Model clears the other tool's result
+  if ((next === 'enhance' || next === 'model') && state.studio.kind && state.studio.kind !== next) { state.studio.status = 'idle'; state.studio.kind = null; state.added.studio = false; }
+  state.tab = next; render();
 }));
 
 $('typeChips').addEventListener('click', e => {
   const b = e.target.closest('[data-type]'); if (!b || busy()) return;
-  state.type = b.dataset.type; render();
+  state.type = b.dataset.type; fitModelToType();
+  if (state.studio.kind === 'model') { state.studio.status = 'idle'; state.studio.kind = null; }
+  render();
 });
-$('preset').addEventListener('change', e => { state.preset = e.target.value; render(); });
+$('outBox').addEventListener('click', e => { if (e.target.closest('[data-retry]')) runStudio('model'); });
+$('modelPicker').addEventListener('click', e => {
+  const b = e.target.closest('[data-model]'); if (!b || busy()) return;
+  state.modelId = b.dataset.model;
+  if (state.studio.status === 'done' && state.studio.kind === 'model') runStudio('model'); else render();
+});
 $('metalChips').addEventListener('click', e => {
   const b = e.target.closest('[data-metal]'); if (!b) return;
-  state.studio.metal = b.dataset.metal; render();
+  if (busy()) return;
+  state.studio.metal = b.dataset.metal; state.added.studio = false;
+  // On model the metal is part of the AI photo, so make a new one; Enhance recolours instantly
+  if (state.studio.kind === 'model') runStudio('model'); else render();
 });
 $('runBtn').addEventListener('click', () => runStudio(state.tab === 'model' ? 'model' : 'enhance'));
-$('toModel').addEventListener('click', () => { state.tab = 'model'; runStudio('model'); });
+$('toModel').addEventListener('click', () => {
+  state.tab = 'model'; fitModelToType(); runStudio('model');
+});
 
-$('mix').addEventListener('input', e => { state.blend.mix = +e.target.value; render(); });
-$('blendBtn').addEventListener('click', () => {
+// Free Hugging Face token (optional, stored only in this browser)
+try { $('hfToken').value = hfToken(); } catch {}
+$('hfSave').addEventListener('click', () => {
+  const v = $('hfToken').value.trim();
+  if (v && !/^hf_[A-Za-z0-9]{20,}$/.test(v)) return toast('That doesn\'t look like a Hugging Face token (starts with hf_)');
+  try { v ? localStorage.setItem('jewelix.hfToken', v) : localStorage.removeItem('jewelix.hfToken'); } catch {}
+  toast(v ? 'Token saved in this browser' : 'Token removed'); render();
+});
+
+$('mix').addEventListener('input', e => { state.blend.mix = +e.target.value; state.added.blend = false; render(); });
+$('blendBtn').addEventListener('click', async () => {
   if (busy()) return;
-  state.blend.status = 'loading'; state.attached.blend = false; render();
-  simulate($('blendBox'), 'blend', () => { state.blend.status = 'done'; render(); toast('New design created'); });
+  state.blend.status = 'loading'; state.added.blend = false; render();
+  try {
+    await withLoader($('blendBox'), 'blend', async () => {
+      [state.blend.cutA, state.blend.cutB] = await Promise.all([getCutout(state.uploads.blendA), getCutout(state.uploads.blendB)]);
+    });
+    state.blend.status = 'done'; render(); toast('New design created');
+  } catch { state.blend.status = 'idle'; render(); toast('Could not process these photos'); }
 });
 
 $('searchBtn').addEventListener('click', () => {
@@ -503,6 +1000,31 @@ $('searchBtn').addEventListener('click', () => {
   let i = 0; const iv = setInterval(() => { const m = document.querySelector('#searchOut .load-msg'); if (m) m.textContent = MSGS.search[++i % 3]; }, 700);
   setTimeout(() => { clearInterval(iv); state.search.status = 'done'; render(); toast('Search complete'); }, 2200);
 });
+
+// Raw + Catalog actions
+$('rawGrid').addEventListener('click', e => {
+  const b = e.target.closest('[data-raw-use]'); if (!b || busy()) return;
+  const r = state.raw.find(x => x.id === b.dataset.rawUse);
+  state.tab = b.dataset.to; setUpload('studio', { name: r.name, img: r.img, inv: r.inv, type: r.type });
+});
+$('catGrid').addEventListener('click', e => {
+  const b = e.target.closest('[data-cat-del]'); if (!b) return;
+  state.catalog = state.catalog.filter(c => c.id !== b.dataset.catDel); saveCatalog(); render();
+});
+
+// Inventory modal
+$('invClose').addEventListener('click', closeInventory);
+$('invModal').addEventListener('click', e => { if (e.target === $('invModal')) closeInventory(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeInventory(); });
+$('invFilters').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b) return; state.invFilter = b.dataset.f; renderInventory(); });
+$('invGrid').addEventListener('click', e => { const b = e.target.closest('[data-sku]'); if (b) useInventory(invTarget, b.dataset.sku); });
+$('invGrid').addEventListener('dragstart', e => {
+  const b = e.target.closest('[data-sku]'); if (!b) return;
+  e.dataTransfer.setData('text/jewelix-sku', b.dataset.sku); e.dataTransfer.effectAllowed = 'copy';
+  // Let the user drop onto the upload box behind the modal
+  setTimeout(() => $('invModal').classList.add('pointer-events-none', 'opacity-30'), 0);
+});
+$('invGrid').addEventListener('dragend', () => $('invModal').classList.remove('pointer-events-none', 'opacity-30'));
 
 ['studio', 'blendA', 'blendB', 'search'].forEach(wireDrop);
 wireActions('studio'); wireActions('blend');
