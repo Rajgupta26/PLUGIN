@@ -80,12 +80,15 @@
     </div>
 
     <!-- Tool tabs -->
-    <nav id="tabs" class="mb-6 grid grid-cols-2 gap-2 rounded-2xl border border-line bg-white p-1.5 md:grid-cols-3 xl:grid-cols-6">
+    <nav id="tabs" class="mb-6 grid grid-cols-2 gap-2 rounded-2xl border border-line bg-white p-1.5 md:grid-cols-4 xl:grid-cols-7">
       <button data-tab="enhance" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
         <span class="text-lg">✨</span><span><span class="block text-sm font-semibold">Enhance</span><span class="tab-sub block text-[11px] text-ink/50">White background + metal</span></span>
       </button>
       <button data-tab="model" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
         <span class="text-lg">👤</span><span><span class="block text-sm font-semibold">Show on Model</span><span class="tab-sub block text-[11px] text-ink/50">Neck, ears, hands</span></span>
+      </button>
+      <button data-tab="mannequin" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
+        <span class="text-lg">🗿</span><span><span class="block text-sm font-semibold">Show on Mannequin</span><span class="tab-sub block text-[11px] text-ink/50">Bust, hand, stand</span></span>
       </button>
       <button data-tab="blend" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
         <span class="text-lg">⧉</span><span><span class="block text-sm font-semibold">Blend</span><span class="tab-sub block text-[11px] text-ink/50">Two designs → one new</span></span>
@@ -264,14 +267,21 @@ const FRAME = 'w=1200&h=1500&fit=crop&q=85';
 // focus: for small pieces the AI works on a square close-up of this spot (centre cx/cy as fractions of the
 // photo, size w as a fraction of its width), which is then blended back into the full photo.
 const MODELS = [
-  { id: 'maya', name: 'Maya', src: 'models/maya.jpg', types: ['necklace', 'earrings'],
+  { id: 'maya', name: 'Maya', src: 'models/maya.jpg', group: 'model', types: ['necklace', 'earrings'],
     focus: { earrings: { cx: .29, cy: .33, w: .42 } } },
-  { id: 'meera', name: 'Meera', src: 'models/meera.jpg', types: ['necklace', 'earrings'],
+  { id: 'meera', name: 'Meera', src: 'models/meera.jpg', group: 'model', types: ['necklace', 'earrings'],
     focus: { earrings: { cx: .70, cy: .41, w: .42 } } },
-  { id: 'zara', name: 'Zara', src: 'models/zara.jpg', types: ['necklace', 'earrings'],
+  { id: 'zara', name: 'Zara', src: 'models/zara.jpg', group: 'model', types: ['necklace', 'earrings'],
     focus: { earrings: { cx: .58, cy: .47, w: .42 } } },
-  { id: 'hand', name: 'Hand', src: U('photo-1617069897015-7d27a76232ed', FRAME), types: ['ring', 'bracelet'],
+  { id: 'hand', name: 'Hand', src: U('photo-1617069897015-7d27a76232ed', FRAME), group: 'model', types: ['ring', 'bracelet'],
     focus: { ring: { cx: .53, cy: .46, w: .55 }, bracelet: { cx: .45, cy: .76, w: .5 } } },
+  // Mannequins and display stands (client's own photos, models/ folder)
+  { id: 'bust-ivory', group: 'mannequin', name: 'Ivory bust', src: 'models/bust-ivory.jpg', types: ['necklace'] },
+  { id: 'bust-black', group: 'mannequin', name: 'Black bust', src: 'models/bust-black.jpg', types: ['necklace'] },
+  { id: 'bust-navy', group: 'mannequin', name: 'Navy bust', src: 'models/bust-navy.jpg', types: ['necklace'] },
+  { id: 'earring-stand', group: 'mannequin', name: 'Earring stand', src: 'models/earring-stand.jpg', types: ['earrings'] },
+  { id: 'hand-skin', group: 'mannequin', name: 'Hand', src: 'models/hand-skin.jpg', types: ['ring', 'bracelet'] },
+  { id: 'hand-black', group: 'mannequin', name: 'Black hand', src: 'models/hand-black.jpg', types: ['ring', 'bracelet'] },
 ];
 
 // Demo stock for "Choose from inventory" (no prices for now)
@@ -291,10 +301,12 @@ const METALS = [
   ['rose', 'Rose gold', 'sepia(.2) saturate(1.05) hue-rotate(-14deg) brightness(1.03)'],
   ['white', 'White gold', 'grayscale(1) brightness(1.08) contrast(1.06)'],
 ];
+const ON_BODY = (k) => k === 'model' || k === 'mannequin';  // tools that put the piece on a model or mannequin
 const MSGS = {
   enhance: ['Detecting jewellery edges…', 'Removing background…', 'Relighting metal & stones…'],
   model: ['Cutting out the piece…', 'AI is putting it on the model…', 'Rendering natural light & shadows…', 'Almost there – free AI service, may queue…'],
   blend: ['Reading both designs…', 'Merging motifs…', 'Rendering new creation…'],
+  mannequin: ['Cutting out the piece…', 'AI is placing it on the mannequin…', 'Rendering natural light & shadows…', 'Almost there – free AI service, may queue…'],
   search: ['Reading shape & motif…', 'Comparing with stock photos…', 'Ranking matches…'],
 };
 
@@ -534,8 +546,17 @@ async function toDataURL(src, max = 1024) {
   return c.toDataURL('image/jpeg', .9);
 }
 
-function aiPrompt(type, metal) {
+function aiPrompt(type, metal, group) {
   const m = metal && metal !== 'original' ? ` in ${METALS.find(x => x[0] === metal)[1].toLowerCase()}` : '';
+  if (group === 'mannequin') {
+    const keepM = `Keep the jewellery design exactly identical to image 2: same shape, stones, metal colour and size. Keep the display, its colour, the background and the lighting exactly the same as image 1. Realistic contact shadows and reflections. Photorealistic high-end jewellery shop display photo.`;
+    return {
+      necklace: `Image 1 is a jewellery display bust. Place the necklace from image 2${m} on the bust: the chain goes around the neck of the bust and drapes naturally over its chest, centred, with the pendant resting at the front. ` + keepM,
+      earrings: `Image 1 is an earring display stand. Hang the pair of earrings from image 2${m} on the stand, one earring hanging from the tip of each arm, hooks over the arms, hanging straight down. ` + keepM,
+      ring: `Image 1 is a display mannequin hand. Put the ring from image 2${m} on the ring finger of the mannequin hand, the band wrapping around the finger near its base, in correct perspective. ` + keepM,
+      bracelet: `Image 1 is a display mannequin hand. Put the bracelet from image 2${m} around the wrist of the mannequin hand, wrapping around it and sitting naturally. ` + keepM,
+    }[type];
+  }
   if (type === 'necklace')
     return `Make the person in image 1 wear the necklace from image 2${m} around her neck: the chain goes around the back of her neck and drapes naturally over her collarbones, with the pendant resting on her chest. ` +
       `Keep the jewellery design exactly identical to image 2: same shape, stones, metal colour and chain thickness. ` +
@@ -557,9 +578,9 @@ function aiError(e) {
   return 'The free AI service is busy or failed. Try again in a minute.';
 }
 
-async function pieceOnWhite(up) {
+async function pieceOnWhite(up, keepPair = false) {
   let cut = await getCutout(up, state.type);
-  if (state.type === 'earrings') cut = (splitPair(cut) || [cut])[0];  // a pair photo → send one earring
+  if (state.type === 'earrings' && !keepPair) cut = (splitPair(cut) || [cut])[0];  // a pair photo → send one earring
   const S = 1024, c = canvasOf(S, S), x = c.getContext('2d');
   x.fillStyle = '#fff'; x.fillRect(0, 0, S, S);
   const k = Math.min(S * .86 / cut.width, S * .86 / cut.height), w = cut.width * k, h = cut.height * k;
@@ -628,13 +649,13 @@ async function generateOnModel(up) {
   fitModelToType();
   const model = MODELS.find(m => m.id === state.modelId), t0 = Date.now();
   // The cut-out piece goes on plain white so the AI can't borrow the product photo's background
-  const [{ Client }, im, piece] = await Promise.all([loadGradio(), loadImg(model.src), pieceOnWhite(up)]);
+  const [{ Client }, im, piece] = await Promise.all([loadGradio(), loadImg(model.src), pieceOnWhite(up, model.id === 'earring-stand')]);
   const rect = focusRect(model, state.type, im);
   const base = rect ? cropToDataURL(im, rect) : await toDataURL(model.src);
   const token = hfToken();
   const app = await Client.connect(AI_SPACE, token ? { token } : {});
   const res = await app.predict('/edit_image', {
-    images_b64_json: JSON.stringify([base, piece]), prompt: aiPrompt(state.type, state.studio.metal),
+    images_b64_json: JSON.stringify([base, piece]), prompt: aiPrompt(state.type, state.studio.metal, model.group),
     lora_adapter: AI_STYLE, seed: 0, randomize_seed: true, guidance_scale: 1.0, steps: 4,
   });
   const out = res.data && res.data[0] && (res.data[0].image || res.data[0].url);
@@ -675,14 +696,14 @@ function loaderHTML(kind) {
   return `<div class="shimmer absolute inset-0"></div><div class="relative grid h-full place-items-center p-6 text-center"><div>
     <div class="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-gold-light border-t-gold-deep"></div>
     <div class="load-msg text-sm font-medium">${MSGS[kind][0]}</div>
-    <div class="mx-auto mt-3 h-1 w-40 overflow-hidden rounded-full bg-line"><div class="load-bar gold-grad h-full w-0 transition-all ${kind === 'model' ? 'duration-[45000ms] ease-out' : 'duration-[1900ms] ease-linear'}"></div></div>
-    ${kind === 'model' ? '<div class="load-time mt-2 font-mono text-[10px] text-ink/50">0s</div>' : ''}</div></div>`;
+    <div class="mx-auto mt-3 h-1 w-40 overflow-hidden rounded-full bg-line"><div class="load-bar gold-grad h-full w-0 transition-all ${ON_BODY(kind) ? 'duration-[45000ms] ease-out' : 'duration-[1900ms] ease-linear'}"></div></div>
+    ${ON_BODY(kind) ? '<div class="load-time mt-2 font-mono text-[10px] text-ink/50">0s</div>' : ''}</div></div>`;
 }
 // Show the loader while `work` runs (at least ~2 s so it reads as processing)
 async function withLoader(box, kind, work) {
   box.innerHTML = loaderHTML(kind);
   requestAnimationFrame(() => requestAnimationFrame(() => { const b = box.querySelector('.load-bar'); if (b) b.style.width = '100%'; }));
-  const msgs = MSGS[kind], slow = kind === 'model', t0 = Date.now();
+  const msgs = MSGS[kind], slow = ON_BODY(kind), t0 = Date.now();
   let i = 0; const iv = setInterval(() => { const m = box.querySelector('.load-msg'); if (m) m.textContent = msgs[++i % msgs.length]; }, slow ? 4000 : 700);
   const tv = slow && setInterval(() => { const t = box.querySelector('.load-time'); if (t) t.textContent = Math.round((Date.now() - t0) / 1000) + 's'; }, 1000);
   try { const [r] = await Promise.all([work(), wait(1900)]); return r; } finally { clearInterval(iv); clearInterval(tv); }
@@ -798,7 +819,7 @@ function actionsHTML() {
 // Final image for the current result (no selection outline)
 function resultCanvas(key) {
   if (key === 'blend') return blendCanvas;
-  if (state.studio.kind === 'model') {
+  if (ON_BODY(state.studio.kind)) {
     const im = scene.photoImg, c = canvasOf(im.naturalWidth, im.naturalHeight); c.getContext('2d').drawImage(im, 0, 0); return c;
   }
   return enhanceCanvas;
@@ -809,7 +830,7 @@ function resultInfo(key) {
     return { title: 'New design JX-NEW-' + (2000 + state.blend.mix), kind: 'Blend', inv: null, sub: `${a.inv ? a.inv.name : a.name} + ${b.inv ? b.inv.name : b.name}` };
   }
   const up = state.uploads.studio, s = state.studio, metal = METALS.find(m => m[0] === s.metal)[1];
-  return { title: up.inv ? up.inv.name : up.name, kind: s.kind === 'model' ? 'On model · ' + scene.model.name : 'Enhanced', inv: up.inv || null, metal: s.metal === 'original' ? null : metal, sub: '' };
+  return { title: up.inv ? up.inv.name : up.name, kind: ON_BODY(s.kind) ? (s.kind === 'mannequin' ? 'On mannequin · ' : 'On model · ') + scene.model.name : 'Enhanced', inv: up.inv || null, metal: s.metal === 'original' ? null : metal, sub: '' };
 }
 
 function wireActions(key) {
@@ -847,30 +868,32 @@ function detailsHTML(inv, metalLabel) {
 }
 
 /* ============ Studio render ============ */
+const toolGroup = () => (state.tab === 'mannequin' ? 'mannequin' : 'model');
 function fitModelToType() {
-  const m = MODELS.find(x => x.id === state.modelId);
-  if (!m.types.includes(state.type)) state.modelId = MODELS.find(x => x.types.includes(state.type)).id;
+  const g = toolGroup(), m = MODELS.find(x => x.id === state.modelId);
+  if (!m.types.includes(state.type) || m.group !== g) state.modelId = MODELS.find(x => x.group === g && x.types.includes(state.type)).id;
 }
 
 function renderStudio() {
-  const up = state.uploads.studio, s = state.studio, isModel = state.tab === 'model';
+  const up = state.uploads.studio, s = state.studio, isModel = ON_BODY(state.tab), isMq = state.tab === 'mannequin';
+  if (isModel) fitModelToType();
   renderDrop('studio');
-  $('step2Title').textContent = isModel ? 'Model Options' : 'Enhance Options';
+  $('step2Title').textContent = isModel ? (isMq ? 'Mannequin Options' : 'Model Options') : 'Enhance Options';
   $('modelOpts').classList.toggle('hidden', !isModel);
   $('typeChips').innerHTML = TYPES.map(([k, l]) => `<button data-type="${k}" class="rounded-lg border border-line px-1 py-2 text-xs font-medium transition hover:border-gold/60 ${state.type === k ? 'sel' : ''}">${l}</button>`).join('');
-  $('modelPicker').innerHTML = MODELS.filter(m => m.types.includes(state.type)).map(m => `
+  $('modelPicker').innerHTML = MODELS.filter(m => m.group === toolGroup() && m.types.includes(state.type)).map(m => `
     <button data-model="${m.id}" class="overflow-hidden rounded-lg border-2 border-line transition hover:border-gold/60 ${state.modelId === m.id ? 'sel' : ''}">
       <img src="${m.src.replace('w=1200&h=1500', 'w=160&h=200')}" class="aspect-[4/5] w-full object-cover" alt="${m.name}"/><span class="block py-1 text-center text-[10px] font-medium">${m.name}</span></button>`).join('');
-  $('runBtn').textContent = isModel ? '👤 Show on Model ✨' : '✨ Enhance Photo';
+  $('runBtn').textContent = isModel ? (isMq ? '🗿 Show on Mannequin ✨' : '👤 Show on Model ✨') : '✨ Enhance Photo';
   $('runBtn').disabled = !up || s.status === 'loading';
   $('runHint').textContent = !up ? 'Upload a photo or choose from inventory' : isModel ? `AI photo · about 10–60 seconds · ${hfToken() ? 'using your free token' : 'free, ~1 a day without a token'}` : 'Removes the background, studio light on white';
-  $('outTitle').textContent = isModel ? 'Show on Model' : 'Enhance';
+  $('outTitle').textContent = isModel ? (isMq ? 'Show on Mannequin' : 'Show on Model') : 'Enhance';
   $('outMeta').innerHTML = up ? `<div class="font-mono text-gold-deep">${TYPES.find(t => t[0] === state.type)[1].toUpperCase()}</div><div class="max-w-[220px] truncate">${esc(up.inv ? up.inv.sku + ' · ' + up.inv.name : up.name)}</div>` : `<div class="font-mono text-ink/40">NO PHOTO YET</div>`;
 
   $('inTag').textContent = up ? (up.inv ? 'INVENTORY' : 'INPUT') : '—';
   $('inBox').innerHTML = up ? `<img src="${up.img}" class="h-full w-full object-contain" alt="Original"/>` : `<div class="p-6 text-center text-sm text-ink/40">Your photo appears here</div>`;
 
-  const showModel = s.status === 'done' && s.kind === 'model';
+  const showModel = s.status === 'done' && ON_BODY(s.kind);
   $('outGrid').className = 'grid gap-4 ' + (showModel ? 'md:grid-cols-[1fr_1.4fr]' : 'md:grid-cols-2');
   const box = $('outBox');
   box.className = 'relative overflow-hidden rounded-xl border border-line bg-ivory ' + (showModel ? '' : 'aspect-square');
@@ -887,15 +910,15 @@ function renderStudio() {
       <div class="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-full border border-red-200 bg-red-50 text-2xl">!</div>
       <div class="font-serif text-xl">Couldn't create the photo</div><p class="mx-auto mt-1 max-w-xs text-xs text-red-700">${esc(s.msg)}</p>
       <button data-retry class="mt-4 rounded-xl bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black">Try again</button></div></div>`;
-  } else if (s.status === 'idle') box.innerHTML = empty(up ? (isModel ? 'Ready to show on model' : 'Ready to enhance') : 'Waiting for a photo', isModel ? `${MODELS.find(m => m.id === state.modelId).name} · realistic AI photo` : 'Background → pure white');
-  $('outTag').textContent = s.status === 'done' ? (s.kind === 'model' ? 'ON MODEL' : 'ENHANCED') + (s.metal !== 'original' ? ' · ' + s.metal.toUpperCase() : '') : '—';
+  } else if (s.status === 'idle') box.innerHTML = empty(up ? (isModel ? (isMq ? 'Ready to show on mannequin' : 'Ready to show on model') : 'Ready to enhance') : 'Waiting for a photo', isModel ? `${MODELS.find(m => m.id === state.modelId).name} · realistic AI photo` : 'Background → pure white');
+  $('outTag').textContent = s.status === 'done' ? (ON_BODY(s.kind) ? (s.kind === 'mannequin' ? 'ON MANNEQUIN' : 'ON MODEL') : 'ENHANCED') + (s.metal !== 'original' ? ' · ' + s.metal.toUpperCase() : '') : '—';
 
   const metalLabel = s.metal === 'original' ? null : METALS.find(m => m[0] === s.metal)[1];
   $('detailsBox').classList.toggle('hidden', !(s.status === 'done' && up && up.inv));
   if (s.status === 'done' && up && up.inv) $('detailsBox').innerHTML = detailsHTML(up.inv, metalLabel);
 
   $('metalBar').classList.toggle('hidden', s.status !== 'done');
-  $('toModel').classList.toggle('hidden', s.kind === 'model');
+  $('toModel').classList.toggle('hidden', ON_BODY(s.kind));
   $('metalChips').innerHTML = METALS.map(([k, l]) => `<button data-metal="${k}" class="flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-xs font-medium transition hover:border-gold/60 ${s.metal === k ? 'sel' : ''}">
     <span class="h-4 w-4 rounded-full" style="background:${{ original: 'conic-gradient(#C8A152,#E8B4A0,#D9D9D9,#C8A152)', yellow: 'linear-gradient(135deg,#B8862E,#F1D27A)', rose: 'linear-gradient(135deg,#B76E5A,#F0C2B0)', white: 'linear-gradient(135deg,#9EA3A8,#F2F2F2)' }[k]}"></span>${l} ✨</button>`).join('');
 
@@ -909,13 +932,13 @@ async function runStudio(kind) {
   render();
   try {
     await withLoader($('outBox'), kind, async () => {
-      if (kind === 'model') Object.assign(scene, await generateOnModel(up));
+      if (ON_BODY(kind)) Object.assign(scene, await generateOnModel(up));
       else scene.enhCut = await getCutout(up, state.type);
     });
     state.studio.status = 'done'; render();
-    toast(kind === 'model' ? `Ready in ${scene.secs}s` : 'Background removed');
+    toast(ON_BODY(kind) ? `Ready in ${scene.secs}s` : 'Background removed');
   } catch (err) {
-    if (kind === 'model') Object.assign(state.studio, { status: 'error', msg: aiError(err) });
+    if (ON_BODY(kind)) Object.assign(state.studio, { status: 'error', msg: aiError(err) });
     else { state.studio.status = 'idle'; toast('Could not process this photo – try another'); }
     render();
   }
@@ -1004,7 +1027,7 @@ function renderCatalog() {
 /* ============ Tabs + render ============ */
 function render() {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('tab-on', t.dataset.tab === state.tab));
-  const studio = state.tab === 'enhance' || state.tab === 'model';
+  const studio = state.tab === 'enhance' || ON_BODY(state.tab);
   $('view-studio').classList.toggle('hidden', !studio);
   ['blend', 'search', 'raw', 'catalog'].forEach(v => $('view-' + v).classList.toggle('hidden', state.tab !== v));
   renderStudio(); renderBlend(); renderSearch(); renderRaw(); renderCatalog();
@@ -1014,30 +1037,30 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
   if (busy()) return;
   const next = t.dataset.tab;
   // Switching between Enhance and Show on Model clears the other tool's result
-  if ((next === 'enhance' || next === 'model') && state.studio.kind && state.studio.kind !== next) { state.studio.status = 'idle'; state.studio.kind = null; state.added.studio = false; }
+  if ((next === 'enhance' || ON_BODY(next)) && state.studio.kind && state.studio.kind !== next) { state.studio.status = 'idle'; state.studio.kind = null; state.added.studio = false; }
   state.tab = next; render();
 }));
 
 $('typeChips').addEventListener('click', e => {
   const b = e.target.closest('[data-type]'); if (!b || busy()) return;
   state.type = b.dataset.type; fitModelToType();
-  if (state.studio.kind === 'model') { state.studio.status = 'idle'; state.studio.kind = null; }
+  if (ON_BODY(state.studio.kind)) { state.studio.status = 'idle'; state.studio.kind = null; }
   render();
 });
-$('outBox').addEventListener('click', e => { if (e.target.closest('[data-retry]')) runStudio('model'); });
+$('outBox').addEventListener('click', e => { if (e.target.closest('[data-retry]')) runStudio(state.studio.kind); });
 $('modelPicker').addEventListener('click', e => {
   const b = e.target.closest('[data-model]'); if (!b || busy()) return;
   state.modelId = b.dataset.model;
-  if (state.studio.status === 'done' && state.studio.kind === 'model') runStudio('model'); else render();
+  if (state.studio.status === 'done' && ON_BODY(state.studio.kind)) runStudio(state.studio.kind); else render();
 });
 $('metalChips').addEventListener('click', e => {
   const b = e.target.closest('[data-metal]'); if (!b) return;
   if (busy()) return;
   state.studio.metal = b.dataset.metal; state.added.studio = false;
   // On model the metal is part of the AI photo, so make a new one; Enhance recolours instantly
-  if (state.studio.kind === 'model') runStudio('model'); else render();
+  if (ON_BODY(state.studio.kind)) runStudio(state.studio.kind); else render();
 });
-$('runBtn').addEventListener('click', () => runStudio(state.tab === 'model' ? 'model' : 'enhance'));
+$('runBtn').addEventListener('click', () => runStudio(ON_BODY(state.tab) ? state.tab : 'enhance'));
 $('toModel').addEventListener('click', () => {
   state.tab = 'model'; fitModelToType(); runStudio('model');
 });
