@@ -309,6 +309,16 @@ const MSGS = {
   search: ['Reading shape & motif…', 'Comparing with stock photos…', 'Ranking matches…'],
 };
 
+// Starter catalog photos (catalog/ folder), added once per browser; they can be removed like any other item
+const CATALOG_SEED = [
+  ['raw-diamond-ring', 'Raw Diamond Ring', 'Ring'], ['lotus-diamond-ring', 'Lotus Diamond Ring', 'Ring'],
+  ['leaf-vine-solitaire-ring', 'Leaf Vine Solitaire Ring', 'Ring'], ['floral-vine-choker', 'Floral Vine Choker', 'Necklace'],
+  ['diamond-necklace-earring-set', 'Diamond Necklace & Earring Set', 'Set'], ['leaf-drop-bracelet', 'Leaf Drop Bracelet', 'Bracelet'],
+  ['clover-pearl-bracelet', 'Clover Bracelet', 'Bracelet'], ['two-tone-infinity-bracelet', 'Two-tone Infinity Bracelet', 'Bracelet'],
+  ['pear-drop-earrings', 'Pear Drop Earrings', 'Earrings'], ['gold-drop-earrings', 'Gold Drop Earrings', 'Earrings'],
+  ['bow-drop-earrings', 'Bow Drop Earrings', 'Earrings'],
+].map(([f, title, kind]) => ({ id: 'seed-' + f, img: `catalog/${f}.jpg`, title, kind, inv: null, sub: '', time: 0 }));
+
 /* ============ State ============ */
 const state = {
   tab: 'enhance',
@@ -336,7 +346,17 @@ function toast(msg) {
   clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('opacity-0', 'translate-y-4'), 2400);
 }
 
-function loadCatalog() { try { return JSON.parse(localStorage.getItem('jewelix.catalog') || '[]'); } catch { return []; } }
+function loadCatalog() {
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem('jewelix.catalog') || '[]'); } catch {}
+  try {
+    if (!localStorage.getItem('jewelix.catalogSeeded')) {
+      list = [...list, ...CATALOG_SEED.filter(c => !list.some(x => x.id === c.id))];
+      localStorage.setItem('jewelix.catalog', JSON.stringify(list)); localStorage.setItem('jewelix.catalogSeeded', '1');
+    }
+  } catch { if (!list.length) list = CATALOG_SEED.slice(); }
+  return list;
+}
 function saveCatalog() {
   try { localStorage.setItem('jewelix.catalog', JSON.stringify(state.catalog)); }
   catch { toast('Catalog is full in this browser – remove a few items'); }
@@ -1007,7 +1027,7 @@ function renderCatalog() {
   if (!state.catalog.length) { $('catGrid').innerHTML = `<div class="aspect-[16/6]">${empty('Your catalog is empty', 'Use “Add to Catalog” on any finished result')}</div>`; return; }
   $('catGrid').innerHTML = `<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">${state.catalog.map(c => `
     <div class="overflow-hidden rounded-xl border border-line bg-white">
-      <div class="relative bg-ivory"><img src="${c.img}" class="w-full" alt="${esc(c.title)}"/>
+      <div class="relative bg-ivory"><img src="${c.img}" class="aspect-[4/5] w-full object-cover" alt="${esc(c.title)}"/>
         <span class="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 font-mono text-[10px] tracking-wider">${esc(c.kind.toUpperCase())}</span></div>
       <div class="p-4">
         ${c.inv ? `<div class="font-mono text-[10px] text-gold-deep">${c.inv.sku}</div>` : ''}
