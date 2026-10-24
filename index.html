@@ -195,7 +195,7 @@
         <!-- Metal recolour -->
         <div id="metalBar" class="mt-4 hidden rounded-xl border border-line bg-ivory p-4">
           <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <p class="font-mono text-[10px] tracking-[.18em] text-ink/60">SHOW YOUR CLIENT IN ANOTHER METAL</p>
+            <p class="font-mono text-[10px] tracking-[.18em] text-ink/60">SHOW YOUR CLIENT IN ANOTHER METAL <span id="metalCost" class="normal-case tracking-normal text-ink/40"></span></p>
             <button id="toModel" class="rounded-full border border-ink/80 px-3 py-1 text-xs font-medium transition hover:bg-ink hover:text-white">Show on model ✨</button>
           </div>
           <div id="metalChips" class="grid grid-cols-2 gap-2 sm:grid-cols-4"></div>
@@ -300,11 +300,11 @@ const FRAME = 'w=1200&h=1500&fit=crop&q=85';
 // photo, size w as a fraction of its width), which is then blended back into the full photo.
 const MODELS = [
   { id: 'maya', name: 'Maya', src: 'models/maya.jpg', group: 'model', types: ['necklace', 'earrings'],
-    focus: { earrings: { cx: .29, cy: .33, w: .42 } } },
+    focus: { earrings: { cx: .29, cy: .33, w: .42 }, necklace: { top: .50 } } },
   { id: 'meera', name: 'Meera', src: 'models/meera.jpg', group: 'model', types: ['necklace', 'earrings'],
-    focus: { earrings: { cx: .70, cy: .41, w: .42 } } },
+    focus: { earrings: { cx: .70, cy: .41, w: .42 }, necklace: { top: .60 } } },
   { id: 'zara', name: 'Zara', src: 'models/zara.jpg', group: 'model', types: ['necklace', 'earrings'],
-    focus: { earrings: { cx: .58, cy: .47, w: .42 } } },
+    focus: { earrings: { cx: .58, cy: .47, w: .42 }, necklace: { top: .63 } } },
   { id: 'hand', name: 'Hand', src: U('photo-1617069897015-7d27a76232ed', FRAME), group: 'model', types: ['ring', 'bracelet'],
     focus: { ring: { cx: .53, cy: .46, w: .55 }, bracelet: { cx: .45, cy: .76, w: .5 } } },
   // Mannequins and display stands (client's own photos, models/ folder)
@@ -400,7 +400,8 @@ function loadImg(src) {
   if (!imgCache.has(src)) imgCache.set(src, new Promise((res, rej) => {
     const im = new Image();
     if (/^https?:/.test(src)) im.crossOrigin = 'anonymous';
-    im.onload = () => res(im); im.onerror = () => rej(new Error('Could not load image'));
+    im.onload = () => res(im);
+    im.onerror = () => { const e = new Error("This photo can't be opened – please use a JPG, PNG or WEBP image"); e.code = 'decode'; rej(e); };
     im.src = src;
   }));
   return imgCache.get(src);
@@ -611,7 +612,7 @@ async function toDataURL(src, max = 1024) {
 function aiPrompt(type, metal, group) {
   const m = metal && metal !== 'original' ? ` in ${METALS.find(x => x[0] === metal)[1].toLowerCase()}` : '';
   if (group === 'mannequin') {
-    const keepM = `Keep the jewellery design exactly identical to image 2: same shape, stones, metal colour and size. Keep the display, its colour, the background and the lighting exactly the same as image 1. Realistic contact shadows and reflections. Photorealistic high-end jewellery shop display photo.`;
+    const keepM = `Keep the jewellery design exactly identical to image 2: same shape, stones, metal colour and size. Keep the display, its colour, the background and the lighting exactly the same as image 1, with exactly the same framing and camera distance; do not zoom in, zoom out or crop. Realistic contact shadows and reflections. Photorealistic high-end jewellery shop display photo.`;
     return {
       necklace: `Image 1 is a jewellery display bust. Place the necklace from image 2${m} on the bust: the chain goes around the neck of the bust and drapes naturally over its chest, centred, with the pendant resting at the front. ` + keepM,
       earrings: `Image 1 is an earring display stand. Hang the pair of earrings from image 2${m} on the stand, one earring hanging from the tip of each arm, hooks over the arms, hanging straight down. ` + keepM,
@@ -621,6 +622,7 @@ function aiPrompt(type, metal, group) {
   }
   if (type === 'necklace')
     return `Make the person in image 1 wear the necklace from image 2${m} around her neck: the chain goes around the back of her neck and drapes naturally over her collarbones, with the pendant resting on her chest. ` +
+      `Keep exactly the same framing, camera distance and composition as image 1: her whole head and face must stay fully visible; do not zoom in, zoom out or crop. ` +
       `Keep the jewellery design exactly identical to image 2: same shape, stones, metal colour and chain thickness. ` +
       `Keep her face, hair, skin, clothes, pose, background and lighting exactly the same as image 1. Realistic shadows and reflections where the jewellery touches the skin. Photorealistic high-end jewellery catalogue photo.`;
   const keep = (what) => `Keep the jewellery design exactly identical to image 2: same shape, stones and metal colour. Keep ${what} exactly the same as image 1, with the same framing. ` +
@@ -634,6 +636,7 @@ function aiPrompt(type, metal, group) {
 
 function aiError(e) {
   const t = `${e && e.title || ''} ${e && e.message || e || ''}`;
+  if (e && e.code === 'decode') return e.message;
   const wait = t.match(/Try again in ([0-9:]+)/);
   if (/quota/i.test(t)) return `Today's free AI limit is used up${wait ? ` – resets in ${wait[1].replace(/^(\d+):(\d+):\d+$/, '$1 h $2 min')}` : ''}. ${hfToken() ? 'Your free token\'s limit is used up too.' : 'Add a free Hugging Face token in Model Options (left) for more.'}`;
   if (/sleep|building|paused|not found|Could not resolve|fetch/i.test(t)) return 'The free AI service is offline right now. Try again in a few minutes.';
@@ -651,17 +654,22 @@ async function pieceOnWhite(up, keepPair = false) {
 }
 
 // Square close-up (in pixels) the AI should work on for this jewellery type, or null to send the whole photo
+// Area (in pixels) the AI should work on for this jewellery type, or null to send the whole photo.
+// { cx, cy, w }: square close-up (ear, fingers, wrist). { top }: necklaces send the whole photo (the AI needs
+// the full person to drape the chain correctly); `top` marks the chin line used by keepFace().
 function focusRect(model, type, im) {
   const f = model.focus && model.focus[type]; if (!f) return null;
-  const W = im.naturalWidth, H = im.naturalHeight, side = Math.round(Math.min(f.w * W, W, H));
+  const W = im.naturalWidth, H = im.naturalHeight;
+  if (f.top != null) return null;
+  const side = Math.round(Math.min(f.w * W, W, H));
   const x = Math.round(Math.min(Math.max(f.cx * W - side / 2, 0), W - side));
   const y = Math.round(Math.min(Math.max(f.cy * H - side / 2, 0), H - side));
-  return { x, y, side };
+  return { x, y, w: side, h: side };
 }
 
-function cropToDataURL(im, r, size = 1024) {
-  const c = canvasOf(size, size);
-  c.getContext('2d').drawImage(im, r.x, r.y, r.side, r.side, 0, 0, size, size);
+function cropToDataURL(im, r, max = 1024) {
+  const k = max / Math.max(r.w, r.h), c = canvasOf(Math.round(r.w * k), Math.round(r.h * k));
+  c.getContext('2d').drawImage(im, r.x, r.y, r.w, r.h, 0, 0, c.width, c.height);
   return c.toDataURL('image/jpeg', .92);
 }
 
@@ -681,28 +689,47 @@ const SHOT_CHANGED_AT = 18;
 // (measured on the outer band, where nothing should change), then blend it in with soft edges.
 // Returns null when the AI re-composed the shot (outer band no longer matches): the close-up is then used on its own.
 async function blendBack(im, r, outSrc) {
-  const out = await loadImg(outSrc), n = r.side;
-  const patch = canvasOf(n, n), px = patch.getContext('2d', { willReadFrequently: true });
-  px.drawImage(out, 0, 0, n, n);
-  const orig = canvasOf(n, n), ox = orig.getContext('2d', { willReadFrequently: true });
-  ox.drawImage(im, r.x, r.y, n, n, 0, 0, n, n);
-  const pd = px.getImageData(0, 0, n, n), d = pd.data, od = ox.getImageData(0, 0, n, n).data, band = Math.round(n * .1);
+  const out = await loadImg(outSrc), w = r.w, h = r.h;
+  const patch = canvasOf(w, h), px = patch.getContext('2d', { willReadFrequently: true });
+  px.drawImage(out, 0, 0, w, h);
+  const orig = canvasOf(w, h), ox = orig.getContext('2d', { willReadFrequently: true });
+  ox.drawImage(im, r.x, r.y, w, h, 0, 0, w, h);
+  const pd = px.getImageData(0, 0, w, h), d = pd.data, od = ox.getImageData(0, 0, w, h).data, band = Math.round(Math.min(w, h) * .1);
   const sumP = [0, 0, 0], sumO = [0, 0, 0];
-  for (let y = 0; y < n; y += 2) for (let x = 0; x < n; x += 2) {
-    if (x > band && x < n - band && y > band && y < n - band) continue;
-    const i = (y * n + x) * 4;
+  for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) {
+    if (x > band && x < w - band && y > band && y < h - band) continue;
+    const i = (y * w + x) * 4;
     for (let k = 0; k < 3; k++) { sumP[k] += d[i + k]; sumO[k] += od[i + k]; }
   }
   const gain = sumP.map((v, k) => Math.min(1.15, Math.max(.87, sumO[k] / Math.max(1, v))));
   for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) d[i + k] = Math.min(255, d[i + k] * gain[k]);
   px.putImageData(pd, 0, 0);
   if (shotChanged(patch, orig)) return null;
-  const mask = canvasOf(n, n), mx = mask.getContext('2d'), f = Math.round(n * .08);
-  mx.filter = `blur(${f / 2}px)`; mx.fillStyle = '#000'; mx.fillRect(f, f, n - 2 * f, n - 2 * f);
+  // Soft edges only where the patch meets the rest of the photo (not along the photo's own border)
+  const W = im.naturalWidth, H = im.naturalHeight, f = Math.round(Math.min(w, h) * .08);
+  const l = r.x > 0 ? f : 0, t = r.y > 0 ? f : 0, rr = r.x + w < W ? f : 0, bb = r.y + h < H ? f : 0;
+  const mask = canvasOf(w, h), mx = mask.getContext('2d');
+  mx.filter = `blur(${f / 2}px)`; mx.fillStyle = '#000';
+  mx.fillRect(l || -f, t || -f, w - (l || -f) - (rr || -f), h - (t || -f) - (bb || -f));
   px.globalCompositeOperation = 'destination-in'; px.drawImage(mask, 0, 0);
-  const full = canvasOf(im.naturalWidth, im.naturalHeight), fx = full.getContext('2d');
+  const full = canvasOf(W, H), fx = full.getContext('2d');
   fx.drawImage(im, 0, 0); fx.drawImage(patch, r.x, r.y);
   return full.toDataURL('image/jpeg', .93);
+}
+
+// Necklaces: if the AI kept the photo's framing, take only the part below the chin from its result and keep
+// the original face and hair. If it zoomed or re-framed anyway, its photo is used as it is.
+async function keepFace(im, top, outSrc) {
+  const out = await loadImg(outSrc), W = im.naturalWidth, H = im.naturalHeight;
+  const ai = canvasOf(W, H); ai.getContext('2d').drawImage(out, 0, 0, W, H);
+  const orig = canvasOf(W, H); orig.getContext('2d').drawImage(im, 0, 0, W, H);
+  if (shotChanged(ai, orig)) return null;
+  const y = Math.round(top * H), f = Math.round(H * .04);
+  const mask = canvasOf(W, H), mx = mask.getContext('2d');
+  mx.filter = `blur(${f / 2}px)`; mx.fillStyle = '#000'; mx.fillRect(-f, y + f, W + 2 * f, H);
+  const ax = ai.getContext('2d'); ax.globalCompositeOperation = 'destination-in'; ax.drawImage(mask, 0, 0);
+  orig.getContext('2d').drawImage(ai, 0, 0);
+  return orig.toDataURL('image/jpeg', .93);
 }
 
 // Show on Model: send the model photo (or a close-up of the ear / fingers / wrist for small pieces)
@@ -726,7 +753,8 @@ async function generateOnModel(up) {
   } catch (e) { if (e.data && e.data.account) setAccount(e.data.account); throw e; }
   if (res.account) setAccount(res.account);
   const out = res.image;
-  const photo = (rect && await blendBack(im, rect, out)) || out;
+  const chin = model.focus && model.focus[state.type] && model.focus[state.type].top;
+  const photo = (rect && await blendBack(im, rect, out)) || (chin != null && await keepFace(im, chin, out)) || out;
   return { photo, photoImg: await loadImg(photo), model, secs: Math.round((Date.now() - t0) / 1000) };
 }
 
@@ -827,8 +855,10 @@ function wireDrop(key) {
   const take = (file) => {
     if (!file || busy()) return;
     if (!file.type.startsWith('image/')) return toast('Please upload an image (PNG, JPG, WEBP)');
-    setUpload(key, { name: file.name, img: URL.createObjectURL(file), blob: true });
-    toast('Photo uploaded');
+    const url = URL.createObjectURL(file);
+    // Check the browser can actually read it (iPhone HEIC photos can't be opened in Chrome)
+    loadImg(url).then(() => { setUpload(key, { name: file.name, img: url, blob: true }); toast('Photo uploaded'); })
+      .catch(() => { URL.revokeObjectURL(url); toast(/hei[cf]/i.test(file.type + file.name) ? "iPhone HEIC photos can't be opened here – export as JPG and upload again" : "This photo can't be opened – please use a JPG, PNG or WEBP image"); });
   };
   input.addEventListener('change', e => { take(e.target.files[0]); e.target.value = ''; });
   ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('sel'); }));
@@ -984,6 +1014,7 @@ function renderStudio() {
 
   $('metalBar').classList.toggle('hidden', s.status !== 'done');
   $('toModel').classList.toggle('hidden', ON_BODY(s.kind));
+  $('metalCost').textContent = ON_BODY(s.kind) ? '· creates a new photo (1 credit)' : '· free';
   $('metalChips').innerHTML = METALS.map(([k, l]) => `<button data-metal="${k}" class="flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-xs font-medium transition hover:border-gold/60 ${s.metal === k ? 'sel' : ''}">
     <span class="h-4 w-4 rounded-full" style="background:${{ original: 'conic-gradient(#C8A152,#E8B4A0,#D9D9D9,#C8A152)', yellow: 'linear-gradient(135deg,#B8862E,#F1D27A)', rose: 'linear-gradient(135deg,#B76E5A,#F0C2B0)', white: 'linear-gradient(135deg,#9EA3A8,#F2F2F2)' }[k]}"></span>${l} ✨</button>`).join('');
 
@@ -1011,7 +1042,7 @@ async function runStudio(kind) {
     await settleJob(job, 0, err && err.message);
     if (err && err.status === 402) { state.studio.status = 'idle'; render(); return openSheet('limit', kind); }
     if (ON_BODY(kind)) Object.assign(state.studio, { status: 'error', msg: aiError(err) });
-    else { state.studio.status = 'idle'; toast('Could not process this photo – try another'); }
+    else { state.studio.status = 'idle'; toast(err && err.code === 'decode' ? err.message : 'Could not process this photo – try another'); }
     render();
   }
 }
@@ -1341,7 +1372,9 @@ $('outBox').addEventListener('click', e => { if (e.target.closest('[data-retry]'
 $('modelPicker').addEventListener('click', e => {
   const b = e.target.closest('[data-model]'); if (!b || busy()) return;
   state.modelId = b.dataset.model;
-  if (state.studio.status === 'done' && ON_BODY(state.studio.kind)) runStudio(state.studio.kind); else render();
+  // A new model needs a new photo: show "Ready" and let the user click the button (generating costs a credit)
+  if (ON_BODY(state.studio.kind)) { state.studio.status = 'idle'; state.studio.kind = null; state.added.studio = false; }
+  render();
 });
 $('metalChips').addEventListener('click', e => {
   const b = e.target.closest('[data-metal]'); if (!b) return;
