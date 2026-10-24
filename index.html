@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Jewelix AI Studio</title>
+<title>Jewelrex AI Studio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <script src="https://cdn.tailwindcss.com/3.4.5"></script>
@@ -48,6 +48,22 @@
   .checker { background-color: #fff; background-image: linear-gradient(45deg,#f3eee5 25%,transparent 25%),linear-gradient(-45deg,#f3eee5 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f3eee5 75%),linear-gradient(-45deg,transparent 75%,#f3eee5 75%); background-size: 16px 16px; background-position: 0 0,0 8px,8px -8px,-8px 0; }
   #stage { touch-action: none; }
   input[type=range] { accent-color: #C8A152; }
+  /* Processing animation: orbiting gold ring around a glinting gem (no text) */
+  .gem-loader { position: relative; width: 112px; height: 112px; }
+  .gem-loader .orbit { position: absolute; inset: 0; border-radius: 50%; border: 2px solid rgba(200,161,82,.18); border-top-color: #C8A152; border-right-color: #E6CE93; animation: spin 1.4s cubic-bezier(.6,.1,.4,.9) infinite; }
+  .gem-loader .orbit.two { inset: 14px; border-width: 1.5px; border-top-color: transparent; border-bottom-color: #A9843B; animation-duration: 2.2s; animation-direction: reverse; }
+  .gem-loader .spark { position: absolute; left: 50%; top: -3px; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%; background: #E6CE93; box-shadow: 0 0 10px 3px rgba(230,206,147,.9); }
+  .gem-loader .spin-wrap { position: absolute; inset: 0; animation: spin 2.8s linear infinite; }
+  .gem-loader svg { position: absolute; inset: 30px; animation: gem 2.2s ease-in-out infinite; filter: drop-shadow(0 6px 10px rgba(169,132,59,.35)); }
+  .gem-loader .glint { position: absolute; inset: 30px; overflow: hidden; clip-path: polygon(50% 0, 100% 35%, 50% 100%, 0 35%); }
+  .gem-loader .glint::after { content: ''; position: absolute; top: -20%; bottom: -20%; width: 35%; left: -60%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.85), transparent); animation: glint 2.2s ease-in-out infinite; }
+  .load-track { width: 140px; height: 3px; border-radius: 9px; background: #EADEC9; overflow: hidden; }
+  .load-track::after { content: ''; display: block; height: 100%; width: 40%; border-radius: 9px; background: linear-gradient(90deg, #C8A152, #E6CE93, #C8A152); animation: track 1.6s ease-in-out infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes gem { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-4px) scale(1.04); } }
+  @keyframes glint { 0%, 35% { left: -60%; } 75%, 100% { left: 130%; } }
+  @keyframes track { from { transform: translateX(-110%); } to { transform: translateX(260%); } }
+  @media (prefers-reduced-motion: reduce) { .gem-loader *, .gem-loader *::after, .load-track::after { animation-duration: 6s !important; } }
 </style>
 </head>
 <body class="font-sans text-ink antialiased">
@@ -55,17 +71,28 @@
   <header class="sticky top-0 z-20 px-4 pt-4 sm:px-6">
     <div class="mx-auto flex max-w-7xl items-center justify-between gap-3 rounded-2xl border border-line/70 bg-white/75 px-4 py-3 backdrop-blur sm:px-6">
       <div class="flex items-center gap-3">
-        <img src="logo.png" alt="Jewelix" class="h-11 w-auto" />
-        <span class="font-serif text-2xl tracking-wide">Jewelix</span>
+        <img src="logo.png?v=3" alt="Jewelrex" class="h-10 w-auto sm:h-12" />
         <span class="hidden rounded-full border border-gold/50 bg-gold-light/20 px-3 py-1 font-mono text-[10px] tracking-[.18em] text-gold-deep sm:inline">AI STUDIO PLUGIN</span>
       </div>
       <div class="hidden items-center gap-2 rounded-full border border-line bg-white px-4 py-1.5 text-xs md:flex">
         <span class="relative flex h-2 w-2"><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"></span><span class="relative h-2 w-2 rounded-full bg-emerald-500"></span></span>
         <span class="font-medium">ERP Connected</span><span class="text-line">|</span><span class="text-ink/60">Unit 1 · Zaveri Bazaar</span>
       </div>
-      <div class="flex items-center gap-3">
-        <div class="hidden text-right sm:block"><div class="text-xs font-medium">Rajesh Mehta</div><div class="text-[11px] text-ink/50">Mehta Gold Works</div></div>
-        <div class="grid h-9 w-9 place-items-center rounded-full bg-ink text-xs font-semibold text-gold-light">RM</div>
+      <div class="flex items-center gap-2 sm:gap-3">
+        <!-- Live credit meter -->
+        <button id="creditPill" class="flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 text-xs transition hover:border-gold" title="Credits left this month">
+          <span class="text-gold-deep">◆</span>
+          <span><b id="creditLeft" class="font-semibold">0</b> <span class="hidden text-ink/50 sm:inline">credits</span></span>
+          <span class="hidden h-1.5 w-14 overflow-hidden rounded-full bg-line sm:block"><span id="creditBar" class="gold-grad block h-full transition-all duration-500"></span></span>
+        </button>
+        <div class="relative">
+          <button id="profileBtn" class="flex items-center gap-3 rounded-xl px-2 py-1 transition hover:bg-ivory" aria-haspopup="menu" aria-expanded="false">
+            <div class="hidden text-right sm:block"><div id="pfName" class="text-xs font-medium"></div><div id="pfBiz" class="text-[11px] text-ink/50"></div></div>
+            <div id="pfInit" class="grid h-9 w-9 place-items-center rounded-full bg-ink text-xs font-semibold text-gold-light"></div>
+            <svg class="hidden h-4 w-4 text-ink/40 sm:block" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div id="profileMenu" class="absolute right-0 top-full z-30 mt-2 hidden w-72 rounded-2xl border border-line bg-white p-2 shadow-xl" role="menu"></div>
+        </div>
       </div>
     </div>
   </header>
@@ -213,7 +240,7 @@
           <p class="-mt-2 mb-3 text-xs text-ink/50">Any photo works: a WhatsApp forward, a screenshot, a piece held in hand.</p>
           <div data-drop="search"></div>
           <button id="searchBtn" class="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-ink px-5 py-4 font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50">⌕ Search my inventory</button>
-          <p class="mt-2 text-center text-[11px] text-ink/50">Searches your Jewelix ERP stock</p>
+          <p class="mt-2 text-center text-[11px] text-ink/50">Searches your Jewelrex ERP stock</p>
         </div>
       </div>
       <div class="rounded-2xl border border-line bg-white p-5 sm:p-6">
@@ -243,11 +270,16 @@
     </section>
   </main>
 
+  <!-- Account sheet: profile settings, credits & usage, plans, top-up -->
+  <div id="sheet" class="fixed inset-0 z-40 hidden items-end justify-center bg-ink/40 backdrop-blur-sm sm:items-center sm:p-6">
+    <div id="sheetBody" class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"></div>
+  </div>
+
   <!-- Inventory picker -->
   <div id="invModal" class="fixed inset-0 z-40 hidden items-end justify-center bg-ink/40 p-0 backdrop-blur-sm sm:items-center sm:p-6">
     <div class="max-h-[88vh] w-full max-w-3xl overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
       <div class="flex items-center justify-between border-b border-line px-5 py-4">
-        <div><p class="font-mono text-[10px] tracking-[.18em] text-ink/50">JEWELIX ERP · DEMO STOCK</p><h3 class="font-serif text-xl">Choose from Inventory</h3></div>
+        <div><p class="font-mono text-[10px] tracking-[.18em] text-ink/50">JEWELREX ERP · DEMO STOCK</p><h3 class="font-serif text-xl">Choose from Inventory</h3></div>
         <button id="invClose" class="grid h-9 w-9 place-items-center rounded-full border border-line text-ink/60 hover:border-gold hover:text-ink" aria-label="Close">✕</button>
       </div>
       <div class="flex gap-1.5 overflow-x-auto border-b border-line px-5 py-3" id="invFilters"></div>
@@ -549,12 +581,10 @@ function litPiece(cut, metal, light, tint) {
 }
 
 /* ============ Show on Model: AI photo (free Hugging Face Space) ============ */
-// Qwen-Image-Edit 2511 (open model, commercial use allowed) on a free community Space.
-// Free anonymous use is ~1 photo/day per connection; a free HF token raises the limit.
-const AI_SPACE = 'prithivMLmods/Qwen-Image-Edit-2511-LoRAs-Fast';
+// Qwen-Image-Edit 2511 (open model, commercial use allowed) on a free community Space, called by the server
+// (POST /api/generate) so credits are reserved and charged there. The browser's saved token is forwarded if the
+// server has no HF_TOKEN of its own.
 const AI_STYLE = 'Anything2Real';  // keeps the model's face, clothes and background; tested best of the Space's styles
-let gradioMod = null;
-const loadGradio = () => gradioMod || (gradioMod = import('https://cdn.jsdelivr.net/npm/@gradio/client@2.6.0/dist/index.min.js'));
 const hfToken = () => { try { return localStorage.getItem('jewelix.hfToken') || ''; } catch { return ''; } };
 
 // Any image source → JPEG data URL, at most `max` px on the long side (keeps uploads quick)
@@ -668,17 +698,18 @@ async function generateOnModel(up) {
   fitModelToType();
   const model = MODELS.find(m => m.id === state.modelId), t0 = Date.now();
   // The cut-out piece goes on plain white so the AI can't borrow the product photo's background
-  const [{ Client }, im, piece] = await Promise.all([loadGradio(), loadImg(model.src), pieceOnWhite(up, model.id === 'earring-stand')]);
+  const [im, piece] = await Promise.all([loadImg(model.src), pieceOnWhite(up, model.id === 'earring-stand')]);
   const rect = focusRect(model, state.type, im);
   const base = rect ? cropToDataURL(im, rect) : await toDataURL(model.src);
-  const token = hfToken();
-  const app = await Client.connect(AI_SPACE, token ? { token } : {});
-  const res = await app.predict('/edit_image', {
-    images_b64_json: JSON.stringify([base, piece]), prompt: aiPrompt(state.type, state.studio.metal, model.group),
-    lora_adapter: AI_STYLE, seed: 0, randomize_seed: true, guidance_scale: 1.0, steps: 4,
-  });
-  const out = res.data && res.data[0] && (res.data[0].image || res.data[0].url);
-  if (!out) throw new Error('No image returned');
+  let res;
+  try {
+    res = await api('POST', '/api/generate', {
+      tool: model.group === 'mannequin' ? 'mannequin' : 'model', images_b64_json: JSON.stringify([base, piece]),
+      prompt: aiPrompt(state.type, state.studio.metal, model.group), style: AI_STYLE, hf_token: hfToken() || undefined,
+    });
+  } catch (e) { if (e.data && e.data.account) setAccount(e.data.account); throw e; }
+  setAccount(res.account);
+  const out = res.image;
   const photo = (rect && await blendBack(im, rect, out)) || out;
   return { photo, photoImg: await loadImg(photo), model, secs: Math.round((Date.now() - t0) / 1000) };
 }
@@ -711,21 +742,20 @@ function drawBlend(ca, cb, mix) {
 }
 
 /* ============ UI helpers ============ */
-function loaderHTML(kind) {
-  return `<div class="shimmer absolute inset-0"></div><div class="relative grid h-full place-items-center p-6 text-center"><div>
-    <div class="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-gold-light border-t-gold-deep"></div>
-    <div class="load-msg text-sm font-medium">${MSGS[kind][0]}</div>
-    <div class="mx-auto mt-3 h-1 w-40 overflow-hidden rounded-full bg-line"><div class="load-bar gold-grad h-full w-0 transition-all ${ON_BODY(kind) ? 'duration-[45000ms] ease-out' : 'duration-[1900ms] ease-linear'}"></div></div>
-    ${ON_BODY(kind) ? '<div class="load-time mt-2 font-mono text-[10px] text-ink/50">0s</div>' : ''}</div></div>`;
+const GEM_LOADER = `<div class="gem-loader" role="status" aria-label="Processing">
+  <div class="orbit"></div><div class="orbit two"></div><div class="spin-wrap"><span class="spark"></span></div>
+  <svg viewBox="0 0 52 52"><defs><linearGradient id="gemg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#E6CE93"/><stop offset=".5" stop-color="#C8A152"/><stop offset="1" stop-color="#A9843B"/></linearGradient></defs>
+    <path d="M26 2 50 18 26 50 2 18Z" fill="url(#gemg)"/><path d="M2 18h48M14 18 26 2l12 16M14 18l12 32 12-32" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="1"/></svg>
+  <div class="glint"></div></div>`;
+
+function loaderHTML() {
+  return `<div class="shimmer absolute inset-0"></div><div class="relative grid h-full place-items-center p-6"><div class="grid place-items-center gap-6">${GEM_LOADER}<div class="load-track"></div></div></div>`;
 }
 // Show the loader while `work` runs (at least ~2 s so it reads as processing)
 async function withLoader(box, kind, work) {
   box.innerHTML = loaderHTML(kind);
-  requestAnimationFrame(() => requestAnimationFrame(() => { const b = box.querySelector('.load-bar'); if (b) b.style.width = '100%'; }));
-  const msgs = MSGS[kind], slow = ON_BODY(kind), t0 = Date.now();
-  let i = 0; const iv = setInterval(() => { const m = box.querySelector('.load-msg'); if (m) m.textContent = msgs[++i % msgs.length]; }, slow ? 4000 : 700);
-  const tv = slow && setInterval(() => { const t = box.querySelector('.load-time'); if (t) t.textContent = Math.round((Date.now() - t0) / 1000) + 's'; }, 1000);
-  try { const [r] = await Promise.all([work(), wait(1900)]); return r; } finally { clearInterval(iv); clearInterval(tv); }
+  const [r] = await Promise.all([work(), wait(1900)]);
+  return r;
 }
 
 const empty = (title, sub) => `<div class="grid h-full place-items-center p-6 text-center"><div>
@@ -864,7 +894,7 @@ function wireActions(key) {
   });
   host.querySelector('.act-dl').addEventListener('click', () => {
     const c = resultCanvas(key); if (!c) return;
-    const a = document.createElement('a'); a.download = `jewelix-${key === 'blend' ? 'blend' : state.studio.kind}-${Date.now()}.png`;
+    const a = document.createElement('a'); a.download = `jewelrex-${key === 'blend' ? 'blend' : state.studio.kind}-${Date.now()}.png`;
     a.href = c.toDataURL('image/png'); a.click();
   });
 }
@@ -905,7 +935,7 @@ function renderStudio() {
       <img src="${m.src.replace('w=1200&h=1500', 'w=160&h=200')}" class="aspect-[4/5] w-full object-cover" alt="${m.name}"/><span class="block py-1 text-center text-[10px] font-medium">${m.name}</span></button>`).join('');
   $('runBtn').textContent = isModel ? (isMq ? '🗿 Show on Mannequin ✨' : '👤 Show on Model ✨') : '✨ Enhance Photo';
   $('runBtn').disabled = !up || s.status === 'loading';
-  $('runHint').textContent = !up ? 'Upload a photo or choose from inventory' : isModel ? `AI photo · about 10–60 seconds · ${hfToken() ? 'using your free token' : 'free, ~1 a day without a token'}` : 'Removes the background, studio light on white';
+  $('runHint').textContent = !up ? 'Upload a photo or choose from inventory' : !account ? 'Billing server offline' : `Uses 1 credit · ${creditsLeft()} left${isModel ? ' · about 10–60 seconds' : ''}`;
   $('outTitle').textContent = isModel ? (isMq ? 'Show on Mannequin' : 'Show on Model') : 'Enhance';
   $('outMeta').innerHTML = up ? `<div class="font-mono text-gold-deep">${TYPES.find(t => t[0] === state.type)[1].toUpperCase()}</div><div class="max-w-[220px] truncate">${esc(up.inv ? up.inv.sku + ' · ' + up.inv.name : up.name)}</div>` : `<div class="font-mono text-ink/40">NO PHOTO YET</div>`;
 
@@ -942,11 +972,15 @@ function renderStudio() {
     <span class="h-4 w-4 rounded-full" style="background:${{ original: 'conic-gradient(#C8A152,#E8B4A0,#D9D9D9,#C8A152)', yellow: 'linear-gradient(135deg,#B8862E,#F1D27A)', rose: 'linear-gradient(135deg,#B76E5A,#F0C2B0)', white: 'linear-gradient(135deg,#9EA3A8,#F2F2F2)' }[k]}"></span>${l} ✨</button>`).join('');
 
   const inv = up && up.inv;
-  renderActions('studio', s.status === 'done', `Jewelix · ${inv ? `${inv.name} (${inv.sku}) – ${inv.purity}, ${inv.weight}${inv.carat !== '—' ? ', ' + inv.carat : ''}` : (up ? up.name : '')}${metalLabel ? ' · in ' + metalLabel : ''}`);
+  renderActions('studio', s.status === 'done', `Jewelrex · ${inv ? `${inv.name} (${inv.sku}) – ${inv.purity}, ${inv.weight}${inv.carat !== '—' ? ', ' + inv.carat : ''}` : (up ? up.name : '')}${metalLabel ? ' · in ' + metalLabel : ''}`);
 }
 
 async function runStudio(kind) {
   const up = state.uploads.studio; if (!up || busy()) return;
+  if (!account) return toast('Billing server is offline – start it with: python3 server/app.py');
+  if (account.available < 1) return openSheet('limit', kind);
+  const job = ON_BODY(kind) ? null : await reserveJob('enhance');
+  if (!ON_BODY(kind) && !job) return;
   state.studio = { status: 'loading', kind, metal: state.studio.metal }; state.added.studio = false;
   render();
   try {
@@ -954,9 +988,12 @@ async function runStudio(kind) {
       if (ON_BODY(kind)) Object.assign(scene, await generateOnModel(up));
       else scene.enhCut = await getCutout(up, state.type);
     });
+    await settleJob(job, 1);
     state.studio.status = 'done'; render();
-    toast(ON_BODY(kind) ? `Ready in ${scene.secs}s` : 'Background removed');
+    toast(`${ON_BODY(kind) ? `Ready in ${scene.secs}s` : 'Background removed'} · 1 credit used`);
   } catch (err) {
+    await settleJob(job, 0, err && err.message);
+    if (err && err.status === 402) { state.studio.status = 'idle'; render(); return openSheet('limit', kind); }
     if (ON_BODY(kind)) Object.assign(state.studio, { status: 'error', msg: aiError(err) });
     else { state.studio.status = 'idle'; toast('Could not process this photo – try another'); }
     render();
@@ -968,6 +1005,7 @@ function renderBlend() {
   renderDrop('blendA'); renderDrop('blendB');
   const a = state.uploads.blendA, b = state.uploads.blendB, s = state.blend;
   $('blendBtn').disabled = !a || !b || s.status === 'loading';
+  $('blendBtn').textContent = 'Blend ✨ · 1 credit';
   $('mixVal').textContent = `${100 - s.mix} / ${s.mix}`;
   $('blendTag').textContent = s.status === 'done' ? 'JX-NEW-' + (2000 + s.mix) : '—';
   const box = $('blendBox');
@@ -975,7 +1013,7 @@ function renderBlend() {
     blendCanvas = drawBlend(s.cutA, s.cutB, s.mix); blendCanvas.className = 'fade-in block h-full w-full';
     box.innerHTML = ''; box.appendChild(blendCanvas);
   } else if (s.status === 'idle') box.innerHTML = empty(a && b ? 'Ready to blend' : 'Add two designs', 'A new piece inspired by both');
-  renderActions('blend', s.status === 'done', `New Jewelix design JX-NEW-${2000 + s.mix}`);
+  renderActions('blend', s.status === 'done', `New Jewelrex design JX-NEW-${2000 + s.mix}`);
 }
 
 /* ============ Inventory search ============ */
@@ -986,7 +1024,7 @@ function renderSearch() {
   if (s.status === 'loading') {
     out.innerHTML = `<div class="grid gap-5 md:grid-cols-[220px_1fr]">
       <div class="relative aspect-square overflow-hidden rounded-xl border border-line"><img src="${up.img}" class="h-full w-full object-cover"/><div class="scan-line"></div></div>
-      <div class="grid content-center gap-3"><div class="load-msg font-serif text-xl">${MSGS.search[0]}</div>
+      <div class="grid content-center gap-3"><div class="grid place-items-center py-2">${GEM_LOADER}</div>
       ${[1, 2, 3, 4].map(() => `<div class="shimmer h-14 rounded-xl"></div>`).join('')}</div></div>`;
     return;
   }
@@ -997,7 +1035,7 @@ function renderSearch() {
     <div class="grid place-items-center rounded-xl border border-dashed border-gold/60 bg-ivory p-6 text-center"><div>
       <div class="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-full border border-gold/50 bg-white text-2xl">⌕</div>
       <div class="font-serif text-xl">No inventory connected yet</div>
-      <p class="mx-auto mt-1 max-w-xs text-xs text-ink/50">Matches from your stock will appear here once your Jewelix ERP inventory is linked.</p>
+      <p class="mx-auto mt-1 max-w-xs text-xs text-ink/50">Matches from your stock will appear here once your Jewelrex ERP inventory is linked.</p>
       <button onclick="toast('Inventory sync coming soon')" class="mt-4 rounded-xl bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black">Connect inventory</button>
     </div></div>
   </div>`;
@@ -1035,13 +1073,192 @@ function renderCatalog() {
         ${c.sub ? `<div class="text-xs text-ink/50">${esc(c.sub)}</div>` : ''}
         ${c.inv ? `<div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">${[c.inv.purity, c.metal || c.inv.metal, c.inv.weight, c.inv.carat !== '—' ? c.inv.carat : null].filter(Boolean).map(v => `<span class="rounded-full bg-ivory px-2 py-0.5">${esc(v)}</span>`).join('')}</div>` : (c.metal ? `<div class="mt-2 text-[11px]"><span class="rounded-full bg-ivory px-2 py-0.5">${esc(c.metal)}</span></div>` : '')}
         <div class="mt-3 grid grid-cols-3 gap-1.5">
-          <a href="${c.img}" download="jewelix-${c.id}.jpg" class="rounded-lg border border-line px-2 py-1.5 text-center text-[11px] font-medium hover:border-gold">Download</a>
-          <a target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('Jewelix · ' + c.title + (c.inv ? ` (${c.inv.sku}) – ${c.inv.purity}, ${c.inv.weight}` : ''))}" class="rounded-lg bg-[#1FA855] px-2 py-1.5 text-center text-[11px] font-medium text-white hover:bg-[#178F47]">WhatsApp</a>
+          <a href="${c.img}" download="jewelrex-${c.id}.jpg" class="rounded-lg border border-line px-2 py-1.5 text-center text-[11px] font-medium hover:border-gold">Download</a>
+          <a target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('Jewelrex · ' + c.title + (c.inv ? ` (${c.inv.sku}) – ${c.inv.purity}, ${c.inv.weight}` : ''))}" class="rounded-lg bg-[#1FA855] px-2 py-1.5 text-center text-[11px] font-medium text-white hover:bg-[#178F47]">WhatsApp</a>
           <button data-cat-del="${c.id}" class="rounded-lg border border-line px-2 py-1.5 text-[11px] font-medium text-ink/60 hover:border-red-300 hover:text-red-600">Remove</button>
         </div>
       </div>
     </div>`).join('')}</div>`;
 }
+
+/* ============ Account: profile, credits, plans ============ */
+// Credits live on the server (server/app.py): it reserves before each job, charges 1 credit per delivered
+// image, releases on failure and keeps the ledger. This page only displays balances and asks the server.
+const TOOL_NAMES = { enhance: 'Enhance', blend: 'Blend', model: 'Show on Model', mannequin: 'Show on Mannequin' };
+const ACCOUNT_ID = (() => { try { return localStorage.getItem('jewelrex.accountId') || 'demo-account'; } catch { return 'demo-account'; } })();
+let account = null;   // latest server view: balances, plan, plans, packs, history
+
+async function api(method, path, body) {
+  const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json', 'X-Account-Id': ACCOUNT_ID }, body: body ? JSON.stringify(body) : undefined });
+  let data = {};
+  try { data = await r.json(); } catch {}
+  if (!r.ok) { const e = new Error(data.message || `Server error ${r.status}`); e.status = r.status; e.data = data; throw e; }
+  return data;
+}
+
+// Merge a server balance update and warn once when usage crosses 80% / 95%
+function setAccount(a) {
+  if (!a) return;
+  const before = account && account.warning;
+  account = Object.assign({}, account || {}, a);
+  if (account.warning && account.warning !== before) {
+    if (account.warning === 'exhausted') toast(account.available ? 'Monthly credits used up – using your top-up credits' : 'No credits left – buy more or upgrade');
+    else toast(`You've used ${account.warning} of this month's credits`);
+  }
+  renderAccount();
+}
+async function refreshAccount() {
+  try { setAccount(await api('GET', '/api/account')); } catch { account = null; renderAccount(); }
+}
+const creditsLeft = () => (account ? account.available : 0);
+
+// Ask the server to hold credits for a browser-side job (Enhance / Blend). Returns the job or null if blocked.
+async function reserveJob(tool) {
+  if (!account) { toast('Billing server is offline – start it with: python3 server/app.py'); return null; }
+  try { const r = await api('POST', '/api/jobs', { tool }); setAccount(r.account); return r.job; }
+  catch (e) { if (e.status === 402) { setAccount(e.data.account); openSheet('limit', tool); } else toast(e.message); return null; }
+}
+async function settleJob(jobOrNull, delivered, error) {
+  if (!jobOrNull) return;
+  try {
+    const r = delivered ? await api('POST', `/api/jobs/${jobOrNull.id}/complete`, { delivered })
+      : await api('POST', `/api/jobs/${jobOrNull.id}/fail`, { error: String(error || 'failed') });
+    setAccount(r.account);
+  } catch { refreshAccount(); }
+}
+
+const PROFILE_KEY = 'jewelrex.profile';
+const profile = (() => {
+  let p = null; try { p = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null'); } catch {}
+  return Object.assign({ name: 'Rajesh Mehta', business: 'Mehta Gold Works', email: '', phone: '' }, p || {});
+})();
+function saveProfile() { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); } catch {} }
+
+function warnTone() {
+  if (!account) return 'off';
+  return account.warning === 'exhausted' || account.warning === '95%' ? 'red' : account.warning === '80%' ? 'amber' : 'ok';
+}
+
+function renderAccount() {
+  const tone = warnTone(), m = account && account.monthly;
+  const pct = m && m.allowance ? Math.max(0, 100 - m.used / m.allowance * 100) : 0;
+  $('creditLeft').textContent = account ? account.available.toLocaleString('en-IN') : '—';
+  $('creditBar').style.width = (account ? Math.min(100, pct) : 0) + '%';
+  $('creditBar').className = 'block h-full transition-all duration-500 ' + ({ red: 'bg-red-500', amber: 'bg-amber-500' }[tone] || 'gold-grad');
+  $('creditPill').classList.toggle('border-red-300', tone === 'red');
+  $('creditPill').classList.toggle('border-amber-300', tone === 'amber');
+  $('creditPill').title = account ? `${account.monthly.available} monthly + ${account.prepaid.available} top-up credits left` : 'Billing server offline';
+  $('pfName').textContent = profile.name; $('pfBiz').textContent = profile.business;
+  $('pfInit').textContent = profile.name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '·';
+  $('profileMenu').innerHTML = `
+    <div class="mb-1 border-b border-line px-3 pb-3 pt-2">
+      <div class="font-medium">${esc(profile.name)}</div><div class="text-xs text-ink/50">${esc(profile.business)}</div>
+      <div class="mt-2 flex items-center justify-between text-xs"><span class="rounded-full bg-gold-light/30 px-2 py-0.5 font-mono text-[10px] tracking-wider text-gold-deep">${account ? esc(account.plan_name.toUpperCase()) : 'OFFLINE'}</span><span><b>${account ? account.available : '—'}</b> credits left</span></div>
+    </div>
+    ${[['profile', '👤', 'Profile settings'], ['usage', '◆', 'Credits & usage'], ['plans', '⬆', 'Upgrade plan'], ['topup', '＋', 'Buy credits']].map(([k, i, l]) =>
+      `<button data-menu="${k}" role="menuitem" class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-ivory"><span class="w-4 text-center text-gold-deep">${i}</span>${l}</button>`).join('')}`;
+}
+
+function closeMenu() { $('profileMenu').classList.add('hidden'); $('profileBtn').setAttribute('aria-expanded', 'false'); }
+function openSheet(view, kind) { $('sheet').classList.remove('hidden'); $('sheet').classList.add('flex'); renderSheet(view, kind); }
+function closeSheet() { $('sheet').classList.add('hidden'); $('sheet').classList.remove('flex'); }
+
+function sheetHead(eyebrow, title) {
+  return `<div class="flex items-center justify-between border-b border-line px-5 py-4"><div><p class="font-mono text-[10px] tracking-[.18em] text-ink/50">${eyebrow}</p><h3 class="font-serif text-xl">${title}</h3></div>
+    <button data-close class="grid h-9 w-9 place-items-center rounded-full border border-line text-ink/60 hover:border-gold hover:text-ink" aria-label="Close">✕</button></div>`;
+}
+const price = (inr, suffix = '') => inr === 0 ? 'Free' : inr ? `₹${inr.toLocaleString('en-IN')}${suffix}` : 'Price on request';
+function plansHTML() {
+  const plans = Object.entries(account.plans).filter(([, p]) => !p.one_time);
+  return `<div class="grid gap-3 sm:grid-cols-3">${plans.map(([id, p]) => `
+    <div class="rounded-xl border ${id === account.plan ? 'border-gold bg-gold-light/10' : 'border-line'} p-4">
+      <div class="font-mono text-[10px] tracking-wider text-gold-deep">${esc(p.name.toUpperCase())}</div>
+      <div class="mt-1 font-serif text-2xl">${p.configurable ? 'From ' : ''}${p.monthly_credits.toLocaleString('en-IN')} <span class="font-sans text-xs text-ink/50">credits / month</span></div>
+      <div class="mb-3 text-sm font-medium">${price(p.price_inr, ' / month')}</div>
+      ${id === account.plan ? '<div class="rounded-lg bg-ink py-2 text-center text-xs font-medium text-white">Current plan</div>'
+        : `<button data-plan="${id}" class="w-full rounded-lg border border-ink/80 py-2 text-xs font-medium hover:bg-ink hover:text-white">${p.configurable ? 'Contact sales' : 'Switch to ' + esc(p.name)}</button>`}
+    </div>`).join('')}</div>`;
+}
+function packsHTML() {
+  return `<div class="grid gap-3 sm:grid-cols-3">${account.topup_packs.map(k => `
+    <button data-pack="${k.id}" class="rounded-xl border border-line p-4 text-left transition hover:border-gold">
+      <div class="font-serif text-2xl">+${k.credits}</div><div class="text-xs text-ink/50">prepaid credits</div><div class="mt-2 text-sm font-semibold">${price(k.price_inr)}</div></button>`).join('')}</div>`;
+}
+const RULE = `<div class="rounded-lg bg-ivory px-3 py-2 text-sm"><b>1 credit = 1 finished image delivered.</b> <span class="text-ink/60">Same for Enhance, Blend, Show on Model and Show on Mannequin. Failed generations cost nothing.</span></div>`;
+
+function renderSheet(view, kind) {
+  const body = $('sheetBody');
+  const label = (t) => `<p class="mb-2 mt-5 font-mono text-[10px] tracking-[.18em] text-ink/50">${t}</p>`;
+  const demo = account && account.demo_payments ? '<p class="mt-5 text-[11px] text-ink/40">Demo payments — no money is taken until a payment gateway is connected.</p>' : '';
+  if (view === 'profile') {
+    const field = (k, l, type = 'text') => `<label class="block text-xs"><span class="mb-1 block text-ink/60">${l}</span><input data-pf="${k}" type="${type}" value="${esc(profile[k] || '')}" class="w-full rounded-lg border border-line bg-ivory px-3 py-2.5 text-sm outline-none focus:border-gold"/></label>`;
+    body.innerHTML = sheetHead('ACCOUNT', 'Profile settings') + `<div class="grid gap-3 p-5 sm:grid-cols-2">
+      ${field('name', 'Your name')}${field('business', 'Business name')}${field('email', 'Email', 'email')}${field('phone', 'Phone', 'tel')}
+      <div class="sm:col-span-2 flex justify-end gap-2 pt-2"><button data-close class="rounded-lg border border-line px-4 py-2 text-sm">Cancel</button><button data-save-profile class="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-white hover:bg-black">Save</button></div></div>`;
+  } else if (!account) {
+    body.innerHTML = sheetHead('BILLING', 'Billing server offline') + `<div class="p-5 text-sm text-ink/70">Credits are managed by the Jewelrex server. Start it with <code class="rounded bg-ivory px-1">python3 server/app.py</code> and reload this page.</div>`;
+  } else if (view === 'usage' || view === 'limit') {
+    const m = account.monthly, pct = m.allowance ? Math.min(100, m.used / m.allowance * 100) : 100, tone = warnTone();
+    const ends = account.cycle.end ? new Date(account.cycle.end).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : null;
+    body.innerHTML = sheetHead(view === 'limit' ? 'NO CREDITS LEFT' : 'BILLING', view === 'limit' ? 'Your credits are used up' : 'Credits & usage') + `<div class="p-5">
+      ${view === 'limit' ? `<div class="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">${TOOL_NAMES[kind] || 'This'} needs <b>1 credit</b> and you have <b>${account.available}</b>. Buy more credits or upgrade your plan to keep generating.</div>`
+        : tone !== 'ok' ? `<div class="mb-4 rounded-xl border ${tone === 'red' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'} p-4 text-sm">${account.warning === 'exhausted' ? 'This month’s plan credits are used up.' : `You’ve used ${account.warning} of this month’s credits.`}${account.prepaid.available ? ` ${account.prepaid.available} top-up credits remain.` : ''}</div>` : ''}
+      <div class="rounded-xl border border-line p-4">
+        <div class="flex flex-wrap items-end justify-between gap-2"><div><div class="font-mono text-[10px] tracking-wider text-gold-deep">${esc(account.plan_name.toUpperCase())}</div>
+          <div class="font-serif text-3xl">${account.available.toLocaleString('en-IN')} <span class="font-sans text-sm text-ink/50">credits left = ${account.available} image${account.available === 1 ? '' : 's'}</span></div></div>
+          <div class="text-right text-xs text-ink/60">${ends ? `Plan credits renew ${ends}` : account.plan === 'free_trial' ? 'One-time trial credits' : ''}</div></div>
+        <div class="mt-3 h-2.5 overflow-hidden rounded-full bg-line"><div class="${tone === 'red' ? 'bg-red-500' : tone === 'amber' ? 'bg-amber-500' : 'gold-grad'} h-full" style="width:${pct}%"></div></div>
+        <div class="mt-2 flex flex-wrap justify-between gap-2 text-[11px] text-ink/60"><span>Plan credits: ${m.used} of ${m.allowance} used</span><span>Top-up credits: ${account.prepaid.available}</span></div>
+      </div>
+      ${label('HOW CREDITS WORK')}${RULE}
+      ${label('BUY MORE CREDITS')}${packsHTML()}
+      ${label('PLANS')}${plansHTML()}
+      ${view === 'usage' ? label('RECENT ACTIVITY') + (account.history.length ? `<div class="divide-y divide-line rounded-xl border border-line">${account.history.slice(0, 12).map(h => `
+        <div class="flex items-center justify-between gap-3 px-3 py-2 text-xs"><span class="min-w-0 truncate"><b>${h.kind === 'charge' ? esc(TOOL_NAMES[h.tool] || h.tool || 'Image') : h.kind === 'topup' ? 'Credits purchased' : h.kind === 'grant' ? esc(h.note || 'Plan credits') : h.kind === 'expire' ? 'Unused plan credits expired' : esc(h.kind)}</b> <span class="text-ink/40">${h.bucket === 'prepaid' ? '· top-up' : ''}</span></span>
+        <span class="shrink-0 text-ink/50">${new Date(h.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · <b class="${h.delta < 0 ? 'text-ink' : 'text-emerald-700'}">${h.delta > 0 ? '+' : '−'}${Math.abs(h.delta)}</b></span></div>`).join('')}</div>`
+        : '<p class="text-xs text-ink/50">No activity yet.</p>') : ''}
+      ${demo}</div>`;
+  } else if (view === 'plans') {
+    body.innerHTML = sheetHead('BILLING', 'Upgrade plan') + `<div class="p-5">${plansHTML()}${label('HOW CREDITS WORK')}${RULE}${demo}</div>`;
+  } else if (view === 'topup') {
+    body.innerHTML = sheetHead('BILLING', 'Buy credits') + `<div class="p-5"><p class="mb-3 text-sm text-ink/60">You have <b>${account.available}</b> credits. Top-up credits are used after your monthly plan credits run out.</p>${packsHTML()}${demo}</div>`;
+  }
+  body.dataset.view = view; body.dataset.kind = kind || '';
+}
+
+async function checkout(kind, id) {
+  try { const r = await api('POST', '/api/checkout', { kind, id }); setAccount(r.account); render(); return true; }
+  catch (e) { toast(e.message); return false; }
+}
+
+$('profileBtn').addEventListener('click', e => {
+  e.stopPropagation(); const m = $('profileMenu'), open = m.classList.contains('hidden');
+  m.classList.toggle('hidden', !open); $('profileBtn').setAttribute('aria-expanded', String(open));
+});
+document.addEventListener('click', e => { if (!e.target.closest('#profileMenu') && !e.target.closest('#profileBtn')) closeMenu(); });
+$('profileMenu').addEventListener('click', e => { const b = e.target.closest('[data-menu]'); if (!b) return; closeMenu(); openSheet(b.dataset.menu); });
+$('creditPill').addEventListener('click', () => openSheet('usage'));
+$('sheet').addEventListener('click', async e => {
+  if (e.target === $('sheet') || e.target.closest('[data-close]')) return closeSheet();
+  const body = $('sheetBody');
+  const plan = e.target.closest('[data-plan]');
+  if (plan) {
+    if (account.plans[plan.dataset.plan].configurable) return toast('Enterprise plans are set up by our team – contact sales');
+    if (await checkout('plan', plan.dataset.plan)) { renderSheet(body.dataset.view === 'limit' ? 'usage' : body.dataset.view); toast(`Switched to ${account.plan_name}`); }
+    return;
+  }
+  const pack = e.target.closest('[data-pack]');
+  if (pack) {
+    const p = account.topup_packs.find(k => k.id === pack.dataset.pack);
+    if (await checkout('topup', p.id)) { renderSheet(body.dataset.view === 'limit' ? 'usage' : body.dataset.view); toast(`+${p.credits} credits added`); }
+    return;
+  }
+  if (e.target.closest('[data-save-profile]')) {
+    body.querySelectorAll('[data-pf]').forEach(i => profile[i.dataset.pf] = i.value.trim());
+    if (!profile.name) profile.name = 'Your name';
+    saveProfile(); renderAccount(); closeSheet(); toast('Profile saved');
+  }
+});
 
 /* ============ Tabs + render ============ */
 function render() {
@@ -1096,13 +1313,16 @@ $('hfSave').addEventListener('click', () => {
 $('mix').addEventListener('input', e => { state.blend.mix = +e.target.value; state.added.blend = false; render(); });
 $('blendBtn').addEventListener('click', async () => {
   if (busy()) return;
+  const job = await reserveJob('blend');
+  if (!job) return;
   state.blend.status = 'loading'; state.added.blend = false; render();
   try {
     await withLoader($('blendBox'), 'blend', async () => {
       [state.blend.cutA, state.blend.cutB] = await Promise.all([getCutout(state.uploads.blendA), getCutout(state.uploads.blendB)]);
     });
-    state.blend.status = 'done'; render(); toast('New design created');
-  } catch { state.blend.status = 'idle'; render(); toast('Could not process these photos'); }
+    await settleJob(job, 1);
+    state.blend.status = 'done'; render(); toast('New design created · 1 credit used');
+  } catch (e) { await settleJob(job, 0, e && e.message); state.blend.status = 'idle'; render(); toast('Could not process these photos'); }
 });
 
 $('searchBtn').addEventListener('click', () => {
@@ -1126,7 +1346,7 @@ $('catGrid').addEventListener('click', e => {
 // Inventory modal
 $('invClose').addEventListener('click', closeInventory);
 $('invModal').addEventListener('click', e => { if (e.target === $('invModal')) closeInventory(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeInventory(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeInventory(); closeSheet(); closeMenu(); } });
 $('invFilters').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b) return; state.invFilter = b.dataset.f; renderInventory(); });
 $('invGrid').addEventListener('click', e => { const b = e.target.closest('[data-sku]'); if (b) useInventory(invTarget, b.dataset.sku); });
 $('invGrid').addEventListener('dragstart', e => {
@@ -1137,6 +1357,7 @@ $('invGrid').addEventListener('dragstart', e => {
 });
 $('invGrid').addEventListener('dragend', () => $('invModal').classList.remove('pointer-events-none', 'opacity-30'));
 
+renderAccount(); refreshAccount().then(render);
 ['studio', 'blendA', 'blendB', 'search'].forEach(wireDrop);
 wireActions('studio'); wireActions('blend');
 render();

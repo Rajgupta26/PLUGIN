@@ -1,2 +1,4 @@
 .DS_Store
 .claude/
+server/data/
+__pycache__/
