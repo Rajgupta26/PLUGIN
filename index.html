@@ -587,6 +587,19 @@ function litPiece(cut, metal, light, tint) {
 const AI_STYLE = 'Anything2Real';  // keeps the model's face, clothes and background; tested best of the Space's styles
 const hfToken = () => { try { return localStorage.getItem('jewelix.hfToken') || ''; } catch { return ''; } };
 
+// Test mode only: call the Hugging Face Space straight from the browser (the server does this normally)
+const AI_SPACE = 'prithivMLmods/Qwen-Image-Edit-2511-LoRAs-Fast';
+let gradioMod = null;
+async function generateDirect(imagesJson, prompt) {
+  const { Client } = await (gradioMod || (gradioMod = import('https://cdn.jsdelivr.net/npm/@gradio/client@2.6.0/dist/index.min.js')));
+  const token = hfToken();
+  const app = await Client.connect(AI_SPACE, token ? { token } : {});
+  const r = await app.predict('/edit_image', { images_b64_json: imagesJson, prompt, lora_adapter: AI_STYLE, seed: 0, randomize_seed: true, guidance_scale: 1.0, steps: 4 });
+  const out = r.data && r.data[0] && (r.data[0].image || r.data[0].url);
+  if (!out) throw new Error('No image returned');
+  return out;
+}
+
 // Any image source → JPEG data URL, at most `max` px on the long side (keeps uploads quick)
 async function toDataURL(src, max = 1024) {
   const im = await loadImg(src), k = Math.min(1, max / Math.max(im.naturalWidth, im.naturalHeight));
@@ -702,13 +715,16 @@ async function generateOnModel(up) {
   const rect = focusRect(model, state.type, im);
   const base = rect ? cropToDataURL(im, rect) : await toDataURL(model.src);
   let res;
-  try {
+  if (testMode) {
+    res = { image: await generateDirect(JSON.stringify([base, piece]), aiPrompt(state.type, state.studio.metal, model.group)) };
+    testCharge(model.group === 'mannequin' ? 'mannequin' : 'model');
+  } else try {
     res = await api('POST', '/api/generate', {
       tool: model.group === 'mannequin' ? 'mannequin' : 'model', images_b64_json: JSON.stringify([base, piece]),
       prompt: aiPrompt(state.type, state.studio.metal, model.group), style: AI_STYLE, hf_token: hfToken() || undefined,
     });
   } catch (e) { if (e.data && e.data.account) setAccount(e.data.account); throw e; }
-  setAccount(res.account);
+  if (res.account) setAccount(res.account);
   const out = res.image;
   const photo = (rect && await blendBack(im, rect, out)) || out;
   return { photo, photoImg: await loadImg(photo), model, secs: Math.round((Date.now() - t0) / 1000) };
@@ -1107,19 +1123,49 @@ function setAccount(a) {
   }
   renderAccount();
 }
+// Test mode: when the billing server can't be reached (page opened as a file, from another host, or the server
+// isn't running), the app keeps working with free test credits stored in this browser. Same rule: 1 credit per
+// delivered image, nothing charged on failure. Real billing always goes through the server.
+const TEST_KEY = 'jewelrex.testCredits', TEST_START = 100;
+const TEST_PLANS = { starter: { name: 'Starter', monthly_credits: 80, price_inr: null }, growth: { name: 'Growth', monthly_credits: 220, price_inr: null },
+  professional: { name: 'Professional', monthly_credits: 500, price_inr: null }, studio: { name: 'Studio', monthly_credits: 1100, price_inr: null },
+  enterprise: { name: 'Enterprise', monthly_credits: 3000, configurable: true, price_inr: null } };
+const TEST_PACKS = [{ id: 'pack_50', credits: 50, price_inr: null }, { id: 'pack_200', credits: 200, price_inr: null }, { id: 'pack_500', credits: 500, price_inr: null }];
+let testMode = false;
+function testAccount() {
+  let t = null; try { t = JSON.parse(localStorage.getItem(TEST_KEY) || 'null'); } catch {}
+  t = Object.assign({ allowance: TEST_START, used: 0, extra: 0, history: [] }, t || {});
+  const monthlyLeft = Math.max(0, t.allowance - t.used), ratio = t.allowance ? t.used / t.allowance : 1;
+  return { test: t, account_id: 'test', plan: t.plan || 'test', plan_name: `Test mode${t.plan ? ' · ' + TEST_PLANS[t.plan].name : ''}`, cycle: {},
+    monthly: { allowance: t.allowance, used: t.used, available: monthlyLeft, held: 0 }, prepaid: { available: t.extra, held: 0 },
+    available: monthlyLeft + t.extra, usage_ratio: ratio, blocked: monthlyLeft + t.extra === 0,
+    warning: ratio >= .95 ? (monthlyLeft === 0 ? 'exhausted' : '95%') : ratio >= .8 ? '80%' : null,
+    history: t.history, plans: TEST_PLANS, topup_packs: TEST_PACKS, demo_payments: true };
+}
+function saveTest(t) { try { localStorage.setItem(TEST_KEY, JSON.stringify(t)); } catch {} setAccount(testAccount()); }
+function testCharge(tool) {
+  const t = testAccount().test, fromMonth = Math.min(1, Math.max(0, t.allowance - t.used));
+  t.used += fromMonth; t.extra -= 1 - fromMonth;
+  t.history.unshift({ kind: 'charge', tool, delta: -1, bucket: fromMonth ? 'monthly' : 'prepaid', created_at: new Date().toISOString() });
+  t.history = t.history.slice(0, 50); saveTest(t);
+}
+
 async function refreshAccount() {
-  try { setAccount(await api('GET', '/api/account')); } catch { account = null; renderAccount(); }
+  try { setAccount(await api('GET', '/api/account')); testMode = false; }
+  catch { testMode = true; account = null; setAccount(testAccount()); }
 }
 const creditsLeft = () => (account ? account.available : 0);
 
 // Ask the server to hold credits for a browser-side job (Enhance / Blend). Returns the job or null if blocked.
 async function reserveJob(tool) {
+  if (testMode) { if (account.available < 1) { openSheet('limit', tool); return null; } return { id: 'test', tool }; }
   if (!account) { toast('Billing server is offline – start it with: python3 server/app.py'); return null; }
   try { const r = await api('POST', '/api/jobs', { tool }); setAccount(r.account); return r.job; }
   catch (e) { if (e.status === 402) { setAccount(e.data.account); openSheet('limit', tool); } else toast(e.message); return null; }
 }
 async function settleJob(jobOrNull, delivered, error) {
   if (!jobOrNull) return;
+  if (testMode) { for (let i = 0; i < delivered; i++) testCharge(jobOrNull.tool); return; }
   try {
     const r = delivered ? await api('POST', `/api/jobs/${jobOrNull.id}/complete`, { delivered })
       : await api('POST', `/api/jobs/${jobOrNull.id}/fail`, { error: String(error || 'failed') });
@@ -1189,6 +1235,7 @@ const RULE = `<div class="rounded-lg bg-ivory px-3 py-2 text-sm"><b>1 credit = 1
 function renderSheet(view, kind) {
   const body = $('sheetBody');
   const label = (t) => `<p class="mb-2 mt-5 font-mono text-[10px] tracking-[.18em] text-ink/50">${t}</p>`;
+  const testNote = testMode ? `<div class="mb-4 rounded-xl border border-gold/50 bg-gold-light/10 p-3 text-xs text-ink/70"><b>Test mode</b> — the billing server isn't connected, so these are free test credits saved in this browser. <button data-reset-test class="underline">Reset to ${TEST_START}</button></div>` : '';
   const demo = account && account.demo_payments ? '<p class="mt-5 text-[11px] text-ink/40">Demo payments — no money is taken until a payment gateway is connected.</p>' : '';
   if (view === 'profile') {
     const field = (k, l, type = 'text') => `<label class="block text-xs"><span class="mb-1 block text-ink/60">${l}</span><input data-pf="${k}" type="${type}" value="${esc(profile[k] || '')}" class="w-full rounded-lg border border-line bg-ivory px-3 py-2.5 text-sm outline-none focus:border-gold"/></label>`;
@@ -1200,7 +1247,7 @@ function renderSheet(view, kind) {
   } else if (view === 'usage' || view === 'limit') {
     const m = account.monthly, pct = m.allowance ? Math.min(100, m.used / m.allowance * 100) : 100, tone = warnTone();
     const ends = account.cycle.end ? new Date(account.cycle.end).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : null;
-    body.innerHTML = sheetHead(view === 'limit' ? 'NO CREDITS LEFT' : 'BILLING', view === 'limit' ? 'Your credits are used up' : 'Credits & usage') + `<div class="p-5">
+    body.innerHTML = sheetHead(view === 'limit' ? 'NO CREDITS LEFT' : 'BILLING', view === 'limit' ? 'Your credits are used up' : 'Credits & usage') + `<div class="p-5">${testNote}
       ${view === 'limit' ? `<div class="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">${TOOL_NAMES[kind] || 'This'} needs <b>1 credit</b> and you have <b>${account.available}</b>. Buy more credits or upgrade your plan to keep generating.</div>`
         : tone !== 'ok' ? `<div class="mb-4 rounded-xl border ${tone === 'red' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'} p-4 text-sm">${account.warning === 'exhausted' ? 'This month’s plan credits are used up.' : `You’ve used ${account.warning} of this month’s credits.`}${account.prepaid.available ? ` ${account.prepaid.available} top-up credits remain.` : ''}</div>` : ''}
       <div class="rounded-xl border border-line p-4">
@@ -1227,6 +1274,12 @@ function renderSheet(view, kind) {
 }
 
 async function checkout(kind, id) {
+  if (testMode) {
+    const t = testAccount().test;
+    if (kind === 'topup') { const p = TEST_PACKS.find(k => k.id === id); t.extra += p.credits; t.history.unshift({ kind: 'topup', delta: p.credits, bucket: 'prepaid', created_at: new Date().toISOString() }); }
+    else { t.allowance = TEST_PLANS[id].monthly_credits; t.used = 0; t.plan = id; t.history.unshift({ kind: 'grant', note: `${TEST_PLANS[id].name} test credits`, delta: t.allowance, bucket: 'monthly', created_at: new Date().toISOString() }); }
+    saveTest(t); render(); return true;
+  }
   try { const r = await api('POST', '/api/checkout', { kind, id }); setAccount(r.account); render(); return true; }
   catch (e) { toast(e.message); return false; }
 }
@@ -1253,6 +1306,7 @@ $('sheet').addEventListener('click', async e => {
     if (await checkout('topup', p.id)) { renderSheet(body.dataset.view === 'limit' ? 'usage' : body.dataset.view); toast(`+${p.credits} credits added`); }
     return;
   }
+  if (e.target.closest('[data-reset-test]')) { try { localStorage.removeItem(TEST_KEY); } catch {} setAccount(testAccount()); render(); renderSheet(body.dataset.view); return toast(`Test credits reset to ${TEST_START}`); }
   if (e.target.closest('[data-save-profile]')) {
     body.querySelectorAll('[data-pf]').forEach(i => profile[i.dataset.pf] = i.value.trim());
     if (!profile.name) profile.name = 'Your name';
