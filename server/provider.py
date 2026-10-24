@@ -25,9 +25,20 @@ def edit_image(images_b64_json, prompt, style, token=None):
     call = {"provider": PROVIDER, "route": f"{SPACE}{ENDPOINT}", "unit_type": "gpu_second", "succeeded": False}
     try:
         from gradio_client import Client  # imported lazily so billing and tests don't need it
-        client = Client(SPACE, token=token or os.environ.get("HF_TOKEN") or None, verbose=False)
+        # The free Space is often overloaded: two tries to connect, generous timeouts for the generation itself
+        for attempt in (1, 2):
+            try:
+                client = Client(SPACE, token=token or os.environ.get("HF_TOKEN") or None, verbose=False,
+                                httpx_kwargs={"timeout": 150})
+                break
+            except Exception:
+                if attempt == 2:
+                    raise
+                time.sleep(3)
         out = client.predict(images_b64_json=images_b64_json, prompt=prompt, lora_adapter=style, seed=0,
                              randomize_seed=True, guidance_scale=1.0, steps=4, api_name=ENDPOINT)
+        if isinstance(out, dict) and out.get("status") == "blocked":
+            raise RuntimeError(out.get("message") or "blocked by the content filter")
         image = out.get("image") if isinstance(out, dict) else None
         if not image:
             raise RuntimeError("provider returned no image")

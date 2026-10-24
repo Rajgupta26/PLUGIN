@@ -591,12 +591,24 @@ const hfToken = () => { try { return localStorage.getItem('jewelix.hfToken') || 
 // Test mode only: call the Hugging Face Space straight from the browser (the server does this normally)
 const AI_SPACE = 'prithivMLmods/Qwen-Image-Edit-2511-LoRAs-Fast';
 let gradioMod = null;
+const withTimeout = (p, ms, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => {
+  const e = new Error(`${what} timed out after ${Math.round(ms / 1000)}s`); e.code = 'timeout'; rej(e);
+}, ms))]);
+
 async function generateDirect(imagesJson, prompt) {
   const { Client } = await (gradioMod || (gradioMod = import('https://cdn.jsdelivr.net/npm/@gradio/client@2.6.0/dist/index.min.js')));
   const token = hfToken();
-  const app = await Client.connect(AI_SPACE, token ? { token } : {});
-  const r = await app.predict('/edit_image', { images_b64_json: imagesJson, prompt, lora_adapter: AI_STYLE, seed: 0, randomize_seed: true, guidance_scale: 1.0, steps: 4 });
-  const out = r.data && r.data[0] && (r.data[0].image || r.data[0].url);
+  // The free Space is often overloaded: give connecting two tries before giving up (nothing is charged for this)
+  let app;
+  for (let attempt = 1; ; attempt++) {
+    try { app = await withTimeout(Client.connect(AI_SPACE, token ? { token } : {}), 25000, 'Connecting to the AI service'); break; }
+    catch (e) { if (attempt >= 2) throw e; await wait(3000); }
+  }
+  const r = await withTimeout(app.predict('/edit_image', { images_b64_json: imagesJson, prompt, lora_adapter: AI_STYLE, seed: 0, randomize_seed: true, guidance_scale: 1.0, steps: 4 }),
+    150000, 'The AI service');
+  const d = r.data && r.data[0];
+  if (d && d.status === 'blocked') throw new Error(d.message || 'blocked by the content filter');
+  const out = d && (d.image || d.url);
   if (!out) throw new Error('No image returned');
   return out;
 }
@@ -639,8 +651,11 @@ function aiError(e) {
   if (e && e.code === 'decode') return e.message;
   const wait = t.match(/Try again in ([0-9:]+)/);
   if (/quota/i.test(t)) return `Today's free AI limit is used up${wait ? ` – resets in ${wait[1].replace(/^(\d+):(\d+):\d+$/, '$1 h $2 min')}` : ''}. ${hfToken() ? 'Your free token\'s limit is used up too.' : 'Add a free Hugging Face token in Model Options (left) for more.'}`;
-  if (/sleep|building|paused|not found|Could not resolve|fetch/i.test(t)) return 'The free AI service is offline right now. Try again in a few minutes.';
-  return 'The free AI service is busy or failed. Try again in a minute.';
+  if (/content filter|blocked/i.test(t)) return "The AI service's content filter refused this request. Try a different photo.";
+  if (e && e.code === 'timeout' || /timed? ?out|overload|queue|worker error|503|502|504/i.test(t))
+    return "The free AI service is overloaded and didn't respond in time (it's a shared free service). Nothing was charged – try again in a few minutes.";
+  if (/sleep|building|paused|not found|Could not resolve|fetch|network|connect/i.test(t)) return 'The free AI service can’t be reached right now. Nothing was charged – try again in a few minutes.';
+  return 'The free AI service failed on this request. Nothing was charged – try again in a minute.';
 }
 
 async function pieceOnWhite(up, keepPair = false) {
@@ -1003,7 +1018,7 @@ function renderStudio() {
   } else if (s.status === 'error') {
     box.innerHTML = `<div class="grid h-full place-items-center p-6 text-center"><div>
       <div class="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-full border border-red-200 bg-red-50 text-2xl">!</div>
-      <div class="font-serif text-xl">Couldn't create the photo</div><p class="mx-auto mt-1 max-w-xs text-xs text-red-700">${esc(s.msg)}</p>
+      <div class="font-serif text-xl">Couldn't create the photo</div><p class="mx-auto mt-1 max-w-xs text-xs text-red-700">${esc(s.msg)}</p>${s.detail ? `<p class="mx-auto mt-2 max-w-xs break-words font-mono text-[10px] text-ink/40">${esc(s.detail)}</p>` : ''}
       <button data-retry class="mt-4 rounded-xl bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black">Try again</button></div></div>`;
   } else if (s.status === 'idle') box.innerHTML = empty(up ? (isModel ? (isMq ? 'Ready to show on mannequin' : 'Ready to show on model') : 'Ready to enhance') : 'Waiting for a photo', isModel ? `${MODELS.find(m => m.id === state.modelId).name} · realistic AI photo` : 'Background → pure white');
   $('outTag').textContent = s.status === 'done' ? (ON_BODY(s.kind) ? (s.kind === 'mannequin' ? 'ON MANNEQUIN' : 'ON MODEL') : 'ENHANCED') + (s.metal !== 'original' ? ' · ' + s.metal.toUpperCase() : '') : '—';
@@ -1041,7 +1056,7 @@ async function runStudio(kind) {
   } catch (err) {
     await settleJob(job, 0, err && err.message);
     if (err && err.status === 402) { state.studio.status = 'idle'; render(); return openSheet('limit', kind); }
-    if (ON_BODY(kind)) Object.assign(state.studio, { status: 'error', msg: aiError(err) });
+    if (ON_BODY(kind)) Object.assign(state.studio, { status: 'error', msg: aiError(err), detail: String(err && (err.message || err)).slice(0, 160) });
     else { state.studio.status = 'idle'; toast(err && err.code === 'decode' ? err.message : 'Could not process this photo – try another'); }
     render();
   }
