@@ -45,6 +45,37 @@
   .tab-on { background: #181715 !important; color: #fff; box-shadow: 0 6px 18px -8px rgba(24,23,21,.6); }
   .tab-on:hover { background: #000 !important; }
   .tab-on .tab-sub { color: #E6CE93; }
+  /* Tool bar: frosted-glass highlight that glides to the hovered tab */
+  #tabs { position: relative; isolation: isolate;
+    background: radial-gradient(90% 160% at 0% 0%, rgba(230,206,147,.28), transparent 55%),
+                radial-gradient(90% 160% at 100% 100%, rgba(200,161,82,.18), transparent 55%), #fff; }
+  #tabs .tab { position: relative; z-index: 1; }
+  #tabs .tab > span:first-child { display: inline-block; transition: transform .35s cubic-bezier(.34,1.56,.64,1); }
+  #tabs .tab > span:last-child { transition: transform .35s cubic-bezier(.2,.8,.2,1); }
+  #tabs .tab.is-glass > span:first-child { transform: translateY(-2px) scale(1.15) rotate(-6deg); }
+  #tabs .tab.is-glass > span:last-child { transform: translateX(3px); }
+  .tab-glass { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; border-radius: .75rem; opacity: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,.88), rgba(255,253,248,.52));
+    -webkit-backdrop-filter: blur(14px) saturate(170%); backdrop-filter: blur(14px) saturate(170%);
+    border: 1px solid rgba(255,255,255,.95);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,1), inset 0 -1px 0 rgba(200,161,82,.18), 0 0 0 1px rgba(200,161,82,.22),
+                0 10px 28px -12px rgba(169,132,59,.45), 0 2px 6px -2px rgba(24,23,21,.08);
+    transition: transform .5s cubic-bezier(.2,.9,.25,1.05), width .5s cubic-bezier(.2,.9,.25,1.05), height .5s cubic-bezier(.2,.9,.25,1.05), opacity .25s ease;
+    overflow: hidden; }
+  .tab-glass.show { opacity: 1; }
+  .tab-glass.no-move { transition: opacity .25s ease; }
+  /* Soft glow that follows the pointer inside the glass */
+  .tab-glass::before { content: ''; position: absolute; inset: 0;
+    background: radial-gradient(160px circle at var(--mx, 50%) var(--my, 50%), rgba(230,206,147,.45), transparent 60%); }
+  /* Light sweep each time the glass lands on a tab */
+  .tab-glass::after { content: ''; position: absolute; top: -50%; bottom: -50%; left: -40%; width: 30%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,.95), transparent); transform: skewX(-18deg); opacity: 0; }
+  .tab-glass.shine::after { animation: glassShine .9s ease-out .12s; }
+  @keyframes glassShine { 0% { left: -40%; opacity: 0; } 15% { opacity: 1; } 100% { left: 130%; opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .tab-glass { transition: opacity .2s ease; } .tab-glass.shine::after { animation: none; }
+    #tabs .tab > span { transition: none; } #tabs .tab.is-glass > span { transform: none; }
+  }
   .checker { background-color: #fff; background-image: linear-gradient(45deg,#f3eee5 25%,transparent 25%),linear-gradient(-45deg,#f3eee5 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f3eee5 75%),linear-gradient(-45deg,transparent 75%,#f3eee5 75%); background-size: 16px 16px; background-position: 0 0,0 8px,8px -8px,-8px 0; }
   #stage { touch-action: none; }
   input[type=range] { accent-color: #C8A152; }
@@ -106,25 +137,25 @@
 
     <!-- Tool tabs -->
     <nav id="tabs" class="mb-6 grid grid-cols-2 gap-2 rounded-2xl border border-line bg-white p-1.5 md:grid-cols-4 xl:grid-cols-7">
-      <button data-tab="enhance" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
+      <button data-tab="enhance" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left">
         <span class="text-lg">✨</span><span><span class="block text-sm font-semibold">Enhance</span><span class="tab-sub block text-[11px] text-ink/50">White background + metal</span></span>
       </button>
-      <button data-tab="model" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
+      <button data-tab="model" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left">
         <span class="text-lg">👤</span><span><span class="block text-sm font-semibold">Show on Model</span><span class="tab-sub block text-[11px] text-ink/50">Neck, ears, hands</span></span>
       </button>
-      <button data-tab="mannequin" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
+      <button data-tab="mannequin" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left">
         <span class="text-lg">🗿</span><span><span class="block text-sm font-semibold">Show on Mannequin</span><span class="tab-sub block text-[11px] text-ink/50">Bust, hand, stand</span></span>
       </button>
-      <button data-tab="blend" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
+      <button data-tab="blend" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left">
         <span class="text-lg">⧉</span><span><span class="block text-sm font-semibold">Blend</span><span class="tab-sub block text-[11px] text-ink/50">Two designs → one new</span></span>
       </button>
-      <button data-tab="search" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
+      <button data-tab="search" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left">
         <span class="text-lg">⌕</span><span><span class="block text-sm font-semibold">Inventory Match</span><span class="tab-sub block text-[11px] text-ink/50">Find it in your stock</span></span>
       </button>
-      <button data-tab="raw" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
+      <button data-tab="raw" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left">
         <span class="text-lg">▢</span><span><span class="block text-sm font-semibold">Raw <span id="rawCount" class="font-mono text-[10px] text-gold-deep"></span></span><span class="tab-sub block text-[11px] text-ink/50">Original uploads</span></span>
       </button>
-      <button data-tab="catalog" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-ivory">
+      <button data-tab="catalog" class="tab flex items-center gap-3 rounded-xl px-4 py-3 text-left">
         <span class="text-lg">❖</span><span><span class="block text-sm font-semibold">Catalog <span id="catCount" class="font-mono text-[10px] text-gold-deep"></span></span><span class="tab-sub block text-[11px] text-ink/50">Finished, ready to share</span></span>
       </button>
     </nav>
@@ -1430,6 +1461,42 @@ function render() {
   ['blend', 'search', 'raw', 'catalog'].forEach(v => $('view-' + v).classList.toggle('hidden', state.tab !== v));
   renderStudio(); renderBlend(); renderSearch(); renderRaw(); renderCatalog();
 }
+
+// Tool bar glass: one frosted highlight glides to the tab under the pointer (or keyboard focus)
+(() => {
+  const nav = $('tabs'), glass = document.createElement('span');
+  glass.className = 'tab-glass'; glass.setAttribute('aria-hidden', 'true'); nav.prepend(glass);
+  let current = null;
+  const hide = () => { glass.classList.remove('show'); if (current) current.classList.remove('is-glass'); current = null; };
+  const moveTo = (tab) => {
+    if (!tab || tab.classList.contains('tab-on')) return hide();   // the selected black tab needs no glass
+    const n = nav.getBoundingClientRect(), r = tab.getBoundingClientRect();
+    const place = () => {
+      glass.style.transform = `translate(${r.left - n.left - nav.clientLeft}px, ${r.top - n.top - nav.clientTop}px)`;
+      glass.style.width = r.width + 'px'; glass.style.height = r.height + 'px';
+    };
+    if (!glass.classList.contains('show')) {          // first appearance: fade in on the spot, don't slide
+      glass.classList.add('no-move'); place(); void glass.offsetWidth; glass.classList.remove('no-move');
+    } else place();
+    if (current !== tab) {
+      if (current) current.classList.remove('is-glass');
+      tab.classList.add('is-glass');
+      glass.classList.remove('shine'); void glass.offsetWidth; glass.classList.add('shine');
+    }
+    glass.classList.add('show'); current = tab;
+  };
+  nav.addEventListener('pointerover', e => { if (e.pointerType !== 'touch') moveTo(e.target.closest('.tab')); });
+  nav.addEventListener('pointermove', e => {
+    if (!current) return;
+    const g = glass.getBoundingClientRect();
+    glass.style.setProperty('--mx', `${e.clientX - g.left}px`); glass.style.setProperty('--my', `${e.clientY - g.top}px`);
+  });
+  nav.addEventListener('pointerleave', hide);
+  nav.addEventListener('focusin', e => moveTo(e.target.closest('.tab')));
+  nav.addEventListener('focusout', e => { if (!nav.contains(e.relatedTarget)) hide(); });
+  nav.addEventListener('click', () => requestAnimationFrame(() => { if (current && current.classList.contains('tab-on')) hide(); }));
+  window.addEventListener('resize', hide);
+})();
 
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
   if (busy()) return;
