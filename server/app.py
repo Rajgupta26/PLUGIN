@@ -144,9 +144,9 @@ def get_account(h, conn):
 
 @route("POST", "/api/jobs")
 def create_job(h, conn):
-    """Reserve credits for a job the browser runs itself (Enhance, Blend: no paid provider involved)."""
+    """Reserve credits for a job the browser runs itself (Enhance: no paid provider involved)."""
     acc, b = h.account(conn), h.body()
-    if b.get("tool") not in ("enhance", "blend"):
+    if b.get("tool") != "enhance":
         raise billing.BillingError("use /api/generate for AI tools")
     return 201, {"job": billing.reserve(conn, acc, b["tool"], int(b.get("images", 1))), "account": billing.balances(conn, acc)}
 
@@ -162,7 +162,7 @@ def _own_job(conn, acc, job_id):
 def complete_job(h, conn, job_id):
     acc = h.account(conn)
     j = _own_job(conn, acc, job_id)
-    if j["tool"] not in ("enhance", "blend"):
+    if j["tool"] != "enhance":
         raise billing.BillingError("AI jobs are completed by the server")
     return 200, {"job": billing.complete(conn, job_id, int(h.body().get("delivered", 1))), "account": billing.balances(conn, acc)}
 
@@ -176,11 +176,11 @@ def fail_job(h, conn, job_id):
 
 @route("POST", "/api/generate")
 def generate(h, conn):
-    """Show on Model / Mannequin: reserve 1 credit, call the provider, charge only if an image comes back."""
+    """Show on Model / Mannequin / Blend: reserve 1 credit, call the provider, charge only if an image comes back."""
     acc, b = h.account(conn), h.body()
     tool = b.get("tool")
-    if tool not in ("model", "mannequin"):
-        raise billing.BillingError("tool must be model or mannequin")
+    if tool not in ("model", "mannequin", "blend"):
+        raise billing.BillingError("tool must be model, mannequin or blend")
     j = billing.reserve(conn, acc, tool, 1)
     try:
         image, call = provider.edit_image(b["images_b64_json"], b["prompt"], b.get("style") or AI_STYLE, b.get("hf_token"))

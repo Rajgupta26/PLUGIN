@@ -221,6 +221,11 @@
         <div class="flex flex-col rounded-2xl border border-line bg-white p-5">
           <div class="mb-3 flex items-center justify-between"><p class="font-mono text-[10px] tracking-[.18em] text-ink/60">NEW CREATION</p><span id="blendTag" class="rounded bg-ivory px-2 py-0.5 font-mono text-[10px] text-ink/50">—</span></div>
           <div id="blendBox" class="relative aspect-square overflow-hidden rounded-xl border border-line bg-ivory"></div>
+          <label class="mb-1.5 mt-4 block font-mono text-[10px] tracking-[.18em] text-ink/50" for="blendKind">CREATE A</label>
+          <select id="blendKind" class="w-full rounded-xl border border-line bg-ivory px-4 py-2.5 text-sm outline-none focus:border-gold">
+            <option value="necklace">Necklace</option><option value="earrings">Pair of earrings</option><option value="ring">Ring</option>
+            <option value="bracelet">Bracelet</option><option value="pendant">Pendant</option>
+          </select>
           <label class="mt-4 flex items-center justify-between font-mono text-[10px] tracking-[.18em] text-ink/50"><span>MORE OF A</span><span id="mixVal">50 / 50</span><span>MORE OF B</span></label>
           <input id="mix" type="range" min="20" max="80" value="50" class="mt-1 w-full" />
           <button id="blendBtn" class="gold-grad mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-semibold text-ink transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50">Blend ✨</button>
@@ -685,9 +690,9 @@ function aiError(e) {
   return 'The free AI service failed on this request. Nothing was charged – try again in a minute.';
 }
 
-async function pieceOnWhite(up, keepPair = false) {
-  let cut = await getCutout(up, state.type);
-  if (state.type === 'earrings' && !keepPair) cut = (splitPair(cut) || [cut])[0];  // a pair photo → send one earring
+async function pieceOnWhite(up, keepPair = false, type = state.type) {
+  let cut = await getCutout(up, type);
+  if (type === 'earrings' && !keepPair) cut = (splitPair(cut) || [cut])[0];  // a pair photo → send one earring
   const S = 1024, c = canvasOf(S, S), x = c.getContext('2d');
   x.fillStyle = '#fff'; x.fillRect(0, 0, S, S);
   const k = Math.min(S * .86 / cut.width, S * .86 / cut.height), w = cut.width * k, h = cut.height * k;
@@ -800,6 +805,34 @@ async function generateOnModel(up) {
   return { photo, photoImg: await loadImg(photo), model, secs: Math.round((Date.now() - t0) / 1000) };
 }
 
+/* ============ Blend: AI designs one new piece inspired by both ============ */
+const KIND_NAMES = { necklace: 'necklace', earrings: 'pair of matching earrings', ring: 'ring', bracelet: 'bracelet', pendant: 'pendant on a fine chain' };
+function blendPrompt(kind, mix) {
+  const k = KIND_NAMES[kind];
+  const weight = mix < 40 ? 'Base it mainly on image 1, with accents and details taken from image 2.'
+    : mix > 60 ? 'Base it mainly on image 2, with accents and details taken from image 1.'
+    : 'Take equally from both designs.';
+  return `Design one brand-new piece of fine jewellery: a ${k} that blends the design language of the two pieces in image 1 and image 2. ${weight} ` +
+    `Merge their motifs, shapes, stones, settings and metal into a single coherent, elegant, symmetrical and wearable ${k}. ` +
+    `Do not place the two pieces side by side or on top of each other – create one new original design. ` +
+    `Show only the new ${k}, complete and centred, on a plain pure white background, as a high-end jewellery catalogue product photo with soft studio lighting and sharp, realistic metal and gemstone detail.`;
+}
+
+async function generateBlend(a, b, kind, mix) {
+  const typeOf = (up) => (up.inv && up.inv.type) || 'blend';
+  const [pa, pb] = await Promise.all([pieceOnWhite(a, true, typeOf(a)), pieceOnWhite(b, true, typeOf(b))]);
+  const images = JSON.stringify([pa, pb]), prompt = blendPrompt(kind, mix);
+  let out;
+  if (testMode) { out = await generateDirect(images, prompt); testCharge('blend'); }
+  else {
+    let res;
+    try { res = await api('POST', '/api/generate', { tool: 'blend', images_b64_json: images, prompt, style: AI_STYLE, hf_token: hfToken() || undefined }); }
+    catch (e) { if (e.data && e.data.account) setAccount(e.data.account); throw e; }
+    setAccount(res.account); out = res.image;
+  }
+  return loadImg(out);
+}
+
 /* ============ Enhance + Blend renders ============ */
 function drawEnhanced(cut, metal) {
   const S = 1000, c = canvasOf(S, S), x = c.getContext('2d');
@@ -812,18 +845,6 @@ function drawEnhanced(cut, metal) {
   const lit = litPiece(cut, metal, -1, null);
   x.shadowColor = 'rgba(30,20,10,.18)'; x.shadowBlur = 14; x.shadowOffsetY = 6;
   x.drawImage(lit, ox, oy, w, h);
-  return c;
-}
-
-function drawBlend(ca, cb, mix) {
-  const S = 1000, c = canvasOf(S, S), x = c.getContext('2d');
-  x.fillStyle = '#fff'; x.fillRect(0, 0, S, S);
-  const fit = (cut, sc) => { const k = Math.min(S * sc / cut.width, S * sc / cut.height); return [cut.width * k, cut.height * k]; };
-  const [wa, ha] = fit(ca, .7), [wb, hb] = fit(cb, .56 + mix / 500);
-  x.shadowColor = 'rgba(30,20,10,.16)'; x.shadowBlur = 12; x.shadowOffsetY = 5;
-  x.globalAlpha = Math.min(1, (100 - mix) / 60 + .15); x.drawImage(ca, (S - wa) / 2, (S - ha) / 2, wa, ha);
-  x.globalAlpha = Math.min(1, mix / 60 + .15); x.globalCompositeOperation = 'multiply'; x.drawImage(cb, (S - wb) / 2, (S - hb) / 2, wb, hb);
-  x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
   return c;
 }
 
@@ -970,7 +991,7 @@ function resultCanvas(key) {
 function resultInfo(key) {
   if (key === 'blend') {
     const a = state.uploads.blendA, b = state.uploads.blendB;
-    return { title: 'New design JX-NEW-' + (2000 + state.blend.mix), kind: 'Blend', inv: null, sub: `${a.inv ? a.inv.name : a.name} + ${b.inv ? b.inv.name : b.name}` };
+    return { title: 'New design ' + state.blend.code, kind: 'Blend', inv: null, sub: `${a.inv ? a.inv.name : a.name} + ${b.inv ? b.inv.name : b.name}` };
   }
   const up = state.uploads.studio, s = state.studio, metal = METALS.find(m => m[0] === s.metal)[1];
   return { title: up.inv ? up.inv.name : up.name, kind: ON_BODY(s.kind) ? (s.kind === 'mannequin' ? 'On mannequin · ' : 'On model · ') + scene.model.name : 'Enhanced', inv: up.inv || null, metal: s.metal === 'original' ? null : metal, sub: '' };
@@ -1103,13 +1124,22 @@ function renderBlend() {
   $('blendBtn').disabled = !a || !b || s.status === 'loading';
   $('blendBtn').textContent = 'Blend ✨ · 1 credit';
   $('mixVal').textContent = `${100 - s.mix} / ${s.mix}`;
-  $('blendTag').textContent = s.status === 'done' ? 'JX-NEW-' + (2000 + s.mix) : '—';
+  $('blendKind').value = s.kind || 'necklace';
+  $('blendTag').textContent = s.status === 'done' ? s.code : '—';
   const box = $('blendBox');
   if (s.status === 'done') {
-    blendCanvas = drawBlend(s.cutA, s.cutB, s.mix); blendCanvas.className = 'fade-in block h-full w-full';
-    box.innerHTML = ''; box.appendChild(blendCanvas);
-  } else if (s.status === 'idle') box.innerHTML = empty(a && b ? 'Ready to blend' : 'Add two designs', 'A new piece inspired by both');
-  renderActions('blend', s.status === 'done', `New Jewelrex design JX-NEW-${2000 + s.mix}`);
+    if (!blendCanvas || blendCanvas.dataset.code !== s.code) {
+      const im = s.img; blendCanvas = canvasOf(im.naturalWidth, im.naturalHeight); blendCanvas.getContext('2d').drawImage(im, 0, 0);
+      blendCanvas.dataset.code = s.code; blendCanvas.className = 'fade-in block h-full w-full object-contain';
+    }
+    if (blendCanvas.parentNode !== box) { box.innerHTML = ''; box.appendChild(blendCanvas); }
+  } else if (s.status === 'error') {
+    box.innerHTML = `<div class="grid h-full place-items-center p-6 text-center"><div>
+      <div class="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-full border border-red-200 bg-red-50 text-2xl">!</div>
+      <div class="font-serif text-xl">Couldn't create the design</div><p class="mx-auto mt-1 max-w-xs text-xs text-red-700">${esc(s.msg)}</p>
+      ${s.detail ? `<p class="mx-auto mt-2 max-w-xs break-words font-mono text-[10px] text-ink/40">${esc(s.detail)}</p>` : ''}</div></div>`;
+  } else if (s.status === 'idle') box.innerHTML = empty(a && b ? 'Ready to blend' : 'Add two designs', `A new ${KIND_NAMES[s.kind || 'necklace']} inspired by both`);
+  renderActions('blend', s.status === 'done', `New Jewelrex design ${s.code || ''}`);
 }
 
 /* ============ Inventory search ============ */
@@ -1446,19 +1476,22 @@ $('hfSave').addEventListener('click', () => {
   toast(v ? 'Token saved in this browser' : 'Token removed'); render();
 });
 
-$('mix').addEventListener('input', e => { state.blend.mix = +e.target.value; state.added.blend = false; render(); });
+$('mix').addEventListener('input', e => { state.blend.mix = +e.target.value; $('mixVal').textContent = `${100 - state.blend.mix} / ${state.blend.mix}`; });
+$('blendKind').addEventListener('change', e => { state.blend.kind = e.target.value; if (state.blend.status !== 'loading') { state.blend.status = 'idle'; state.added.blend = false; } render(); });
 $('blendBtn').addEventListener('click', async () => {
   if (busy()) return;
-  const job = await reserveJob('blend');
-  if (!job) return;
-  state.blend.status = 'loading'; state.added.blend = false; render();
+  if (!account) return toast('Billing server is offline – start it with: python3 server/app.py');
+  if (account.available < 1) return openSheet('limit', 'blend');
+  const s = state.blend, kind = s.kind || 'necklace';
+  s.status = 'loading'; state.added.blend = false; render();
   try {
-    await withLoader($('blendBox'), 'blend', async () => {
-      [state.blend.cutA, state.blend.cutB] = await Promise.all([getCutout(state.uploads.blendA), getCutout(state.uploads.blendB)]);
-    });
-    await settleJob(job, 1);
-    state.blend.status = 'done'; render(); toast('New design created · 1 credit used');
-  } catch (e) { await settleJob(job, 0, e && e.message); state.blend.status = 'idle'; render(); toast('Could not process these photos'); }
+    s.img = await withLoader($('blendBox'), 'model', () => generateBlend(state.uploads.blendA, state.uploads.blendB, kind, s.mix));
+    s.code = 'JX-NEW-' + Date.now().toString(36).slice(-5).toUpperCase();
+    s.status = 'done'; render(); toast('New design created · 1 credit used');
+  } catch (e) {
+    if (e && e.status === 402) { s.status = 'idle'; render(); return openSheet('limit', 'blend'); }
+    Object.assign(s, { status: 'error', msg: aiError(e), detail: String(e && (e.message || e)).slice(0, 160) }); render();
+  }
 });
 
 $('searchBtn').addEventListener('click', () => {

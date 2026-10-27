@@ -304,8 +304,9 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(s, 201)
 
     def test_browser_cannot_complete_ai_jobs(self):
-        s, r = self.call("POST", "/api/jobs", {"tool": "model"}, "cheat")
-        self.assertEqual(s, 400)
+        for tool in ("model", "blend"):
+            s, r = self.call("POST", "/api/jobs", {"tool": tool}, "cheat")
+            self.assertEqual(s, 400)
 
     def test_webhook_requires_signature(self):
         s, r = self.call("POST", "/api/webhooks/payment", {"id": "x", "type": "topup.paid", "data": {}})
