@@ -305,13 +305,16 @@ const MODELS = [
     focus: { earrings: { cx: .70, cy: .41, w: .42 }, necklace: { top: .60 } } },
   { id: 'zara', name: 'Zara', src: 'models/zara.jpg', group: 'model', types: ['necklace', 'earrings'],
     focus: { earrings: { cx: .58, cy: .47, w: .42 }, necklace: { top: .63 } } },
+  { id: 'wrist-aria', name: 'Aria', src: 'models/wrist-aria.jpg', group: 'model', types: ['bracelet'] },
   { id: 'hand', name: 'Hand', src: U('photo-1617069897015-7d27a76232ed', FRAME), group: 'model', types: ['ring', 'bracelet'],
-    focus: { ring: { cx: .53, cy: .46, w: .55 }, bracelet: { cx: .45, cy: .76, w: .5 } } },
+    focus: { ring: { cx: .53, cy: .46, w: .55 } } },
   // Mannequins and display stands (client's own photos, models/ folder)
   { id: 'bust-ivory', group: 'mannequin', name: 'Ivory bust', src: 'models/bust-ivory.jpg', types: ['necklace'] },
-  { id: 'bust-black', group: 'mannequin', name: 'Black bust', src: 'models/bust-black.jpg', types: ['necklace'] },
-  { id: 'bust-navy', group: 'mannequin', name: 'Navy bust', src: 'models/bust-navy.jpg', types: ['necklace'] },
-  { id: 'earring-stand', group: 'mannequin', name: 'Earring stand', src: 'models/earring-stand.jpg', types: ['earrings'] },
+  { id: 'bust-black', group: 'mannequin', name: 'Black velvet', src: 'models/bust-black.jpg', types: ['necklace'] },
+  { id: 'bust-beige', group: 'mannequin', name: 'Beige suede', src: 'models/bust-beige.jpg', types: ['necklace'] },
+  { id: 'bust-navy', group: 'mannequin', name: 'Navy velvet', src: 'models/bust-navy.jpg', types: ['necklace'] },
+  { id: 'earring-stand', group: 'mannequin', name: 'Ivory stand', src: 'models/earring-stand.jpg', types: ['earrings'] },
+  { id: 'earring-stand-gold', group: 'mannequin', name: 'Gold stand', src: 'models/earring-stand-gold.jpg', types: ['earrings'] },
   { id: 'hand-skin', group: 'mannequin', name: 'Hand', src: 'models/hand-skin.jpg', types: ['ring', 'bracelet'] },
 ];
 
@@ -627,7 +630,7 @@ function aiPrompt(type, metal, group) {
     const keepM = `Keep the jewellery design exactly identical to image 2: same shape, stones, metal colour and size. Keep the display, its colour, the background and the lighting exactly the same as image 1, with exactly the same framing and camera distance; do not zoom in, zoom out or crop. Realistic contact shadows and reflections. Photorealistic high-end jewellery shop display photo.`;
     return {
       necklace: `Image 1 is a jewellery display bust. Place the necklace from image 2${m} on the bust: the chain goes around the neck of the bust and drapes naturally over its chest, centred, with the pendant resting at the front. ` + keepM,
-      earrings: `Image 1 is an earring display stand. Hang the pair of earrings from image 2${m} on the stand, one earring hanging from the tip of each arm, hooks over the arms, hanging straight down. ` + keepM,
+      earrings: `Image 1 is an earring display stand. Hang the pair of earrings from image 2${m} on the stand, one earring hanging from the end of each arm (from the ring or tip at the end of the arm), hanging straight down. ` + keepM,
       ring: `Image 1 is a display mannequin hand. Put the ring from image 2${m} on the ring finger of the mannequin hand, the band wrapping around the finger near its base, in correct perspective. ` + keepM,
       bracelet: `Image 1 is a display mannequin hand. Put the bracelet from image 2${m} around the wrist of the mannequin hand, wrapping around it and sitting naturally. ` + keepM,
     }[type];
@@ -642,7 +645,8 @@ function aiPrompt(type, metal, group) {
   return {
     earrings: `Image 1 is a close-up of a woman's ear. Add the earring from image 2${m} to her earlobe: it hangs from the earlobe through the piercing, at the real size of an earring. ` + keep('her ear, hair, skin, face and background'),
     ring: `Image 1 is a close-up of a woman's hand. Put the ring from image 2${m} on her ring finger: the band wraps around the finger near its base, seen in correct perspective, at the real size of a ring. ` + keep('the hand, fingers, nails, skin and background'),
-    bracelet: `Image 1 is a close-up of a woman's wrist. Put the bracelet from image 2${m} around her wrist: it wraps around the wrist following its curve and sits naturally on the skin, at the real size of a bracelet. ` + keep('the hand, wrist, skin and background'),
+    bracelet: `Image 1 shows a woman's hand and wrist. Put the bracelet from image 2${m} around her wrist, just below the hand where the wrist is narrowest: it wraps all the way around the wrist following its curve, sits flat against the skin, and its front faces the camera. Real size of a bracelet. ` +
+      `Keep the hand, fingers, wrist and arm exactly the same shape, size, pose and position as image 1; do not change or redraw the hand. ` + keep('the skin, clothes and background'),
   }[type];
 }
 
@@ -753,7 +757,7 @@ async function generateOnModel(up) {
   fitModelToType();
   const model = MODELS.find(m => m.id === state.modelId), t0 = Date.now();
   // The cut-out piece goes on plain white so the AI can't borrow the product photo's background
-  const [im, piece] = await Promise.all([loadImg(model.src), pieceOnWhite(up, model.id === 'earring-stand')]);
+  const [im, piece] = await Promise.all([loadImg(model.src), pieceOnWhite(up, model.id.startsWith('earring-stand'))]);
   const rect = focusRect(model, state.type, im);
   const base = rect ? cropToDataURL(im, rect) : await toDataURL(model.src);
   let res;
@@ -1001,7 +1005,7 @@ function renderStudio() {
   $('outMeta').innerHTML = up ? `<div class="font-mono text-gold-deep">${TYPES.find(t => t[0] === state.type)[1].toUpperCase()}</div><div class="max-w-[220px] truncate">${esc(up.inv ? up.inv.sku + ' · ' + up.inv.name : up.name)}</div>` : `<div class="font-mono text-ink/40">NO PHOTO YET</div>`;
 
   $('inTag').textContent = up ? (up.inv ? 'INVENTORY' : 'INPUT') : '—';
-  $('inBox').innerHTML = up ? `<img src="${up.img}" class="h-full w-full object-contain" alt="Original"/>` : `<div class="p-6 text-center text-sm text-ink/40">Your photo appears here</div>`;
+  $('inBox').innerHTML = up ? `<img src="${up.img}" class="absolute inset-0 h-full w-full object-contain p-3" alt="Original"/>` : `<div class="p-6 text-center text-sm text-ink/40">Your photo appears here</div>`;
 
   const showModel = s.status === 'done' && ON_BODY(s.kind);
   $('outGrid').className = 'grid gap-4 ' + (showModel ? 'md:grid-cols-[1fr_1.4fr]' : 'md:grid-cols-2');
