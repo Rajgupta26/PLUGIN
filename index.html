@@ -364,7 +364,7 @@ const state = {
   search: { status: 'idle' },
   added: { studio: false, blend: false },
   raw: [],
-  catalog: loadCatalog(),
+  catalog: [],   // loaded from IndexedDB on start (loadSaved)
   invFilter: 'all',
 };
 const scene = {};  // current results: enhCut (Enhance), photo/photoImg/model/secs (Show on Model)
@@ -381,20 +381,43 @@ function toast(msg) {
   clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('opacity-0', 'translate-y-4'), 2400);
 }
 
-function loadCatalog() {
-  let list = [];
-  try { list = JSON.parse(localStorage.getItem('jewelix.catalog') || '[]'); } catch {}
-  try {
-    if (!localStorage.getItem('jewelix.catalogSeeded')) {
-      list = [...list, ...CATALOG_SEED.filter(c => !list.some(x => x.id === c.id))];
-      localStorage.setItem('jewelix.catalog', JSON.stringify(list)); localStorage.setItem('jewelix.catalogSeeded', '1');
-    }
-  } catch { if (!list.length) list = CATALOG_SEED.slice(); }
-  return list;
+// Catalog and Raw photos are kept in IndexedDB (browser database: large, survives refreshes).
+// localStorage only holds ~5 MB, which a few finished photos fill up.
+const openDB = (() => { let p; return () => p || (p = new Promise((res, rej) => {
+  const r = indexedDB.open('jewelrex', 1);
+  r.onupgradeneeded = () => { r.result.createObjectStore('catalog', { keyPath: 'id' }); r.result.createObjectStore('raw', { keyPath: 'id' }); };
+  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+})); })();
+async function idb(store, mode, fn) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, mode), req = fn(tx.objectStore(store));
+    tx.oncomplete = () => res(req && req.result); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
+  });
 }
-function saveCatalog() {
-  try { localStorage.setItem('jewelix.catalog', JSON.stringify(state.catalog)); }
-  catch { toast('Catalog is full in this browser – remove a few items'); }
+const idbAll = (store) => idb(store, 'readonly', st => st.getAll());
+const idbPut = (store, value) => idb(store, 'readwrite', st => st.put(value));
+const idbDel = (store, id) => idb(store, 'readwrite', st => st.delete(id));
+const RAW_KEEP = 60;   // newest raw photos kept
+
+async function loadSaved() {
+  try {
+    // One-time move of catalog items saved by older versions (localStorage)
+    let old = []; try { old = JSON.parse(localStorage.getItem('jewelix.catalog') || '[]'); } catch {}
+    for (const c of old) await idbPut('catalog', c);
+    if (!localStorage.getItem('jewelix.catalogSeeded')) for (const c of CATALOG_SEED) await idbPut('catalog', c);
+    try { localStorage.removeItem('jewelix.catalog'); localStorage.setItem('jewelix.catalogSeeded', '1'); } catch {}
+    state.catalog = (await idbAll('catalog')).sort((a, b) => (b.time || 0) - (a.time || 0));
+    state.raw = (await idbAll('raw')).sort((a, b) => b.time - a.time)
+      .map(r => ({ ...r, img: r.blob ? URL.createObjectURL(r.blob) : r.src }));
+  } catch {
+    if (!state.catalog.length) state.catalog = CATALOG_SEED.slice();
+    toast("This browser can't save photos – catalog and raw photos will clear on refresh");
+  }
+  render();
+}
+function saveCatalogItem(item) {
+  idbPut('catalog', item).catch(() => toast("Couldn't save to the catalog in this browser"));
 }
 
 /* ============ Image engine ============ */
@@ -826,8 +849,14 @@ const empty = (title, sub) => `<div class="grid h-full place-items-center p-6 te
   <div class="font-serif text-xl">${title}</div><p class="mt-1 text-xs text-ink/50">${sub}</p></div></div>`;
 
 function addRaw(up) {
-  if (state.raw.some(r => r.img === up.img)) return;
-  state.raw.unshift({ id: 'r' + Date.now(), name: up.name, img: up.img, inv: up.inv || null, type: up.type || null, time: new Date() });
+  if (state.raw.some(r => r.img === up.img || (up.inv && r.inv && r.inv.sku === up.inv.sku))) return;
+  const item = { id: 'r' + Date.now(), name: up.name, inv: up.inv || null, type: up.type || null, time: Date.now() };
+  state.raw.unshift({ ...item, img: up.img });
+  // Save it: uploaded files as the file itself, inventory pieces by their address
+  (up.blob ? fetch(up.img).then(r => r.blob()).then(blob => ({ ...item, blob })) : Promise.resolve({ ...item, src: up.img }))
+    .then(rec => idbPut('raw', rec))
+    .then(() => Promise.all(state.raw.splice(RAW_KEEP).map(r => idbDel('raw', r.id))))
+    .catch(() => {});
 }
 
 /* ============ Upload boxes ============ */
@@ -954,8 +983,9 @@ function wireActions(key) {
     if (state.added[key]) { state.tab = 'catalog'; return render(); }
     const c = resultCanvas(key); if (!c) return;
     const t = canvasOf(Math.round(c.width * .8), Math.round(c.height * .8)); t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
-    state.catalog.unshift({ id: 'c' + Date.now(), img: t.toDataURL('image/jpeg', .86), ...resultInfo(key), time: Date.now() });
-    saveCatalog(); state.added[key] = true; render(); toast('Added to Catalog');
+    const item = { id: 'c' + Date.now(), img: t.toDataURL('image/jpeg', .86), ...resultInfo(key), time: Date.now() };
+    state.catalog.unshift(item); saveCatalogItem(item);
+    state.added[key] = true; render(); toast('Added to Catalog');
   });
   host.querySelector('.act-dl').addEventListener('click', () => {
     const c = resultCanvas(key); if (!c) return;
@@ -1117,7 +1147,7 @@ function renderRaw() {
       <div class="p-3">
         <div class="flex items-center justify-between gap-2"><span class="truncate text-sm font-medium">${esc(r.inv ? r.inv.name : r.name)}</span>
           <span class="shrink-0 rounded bg-ivory px-1.5 py-0.5 font-mono text-[9px] text-ink/60">${r.inv ? 'INVENTORY' : 'UPLOAD'}</span></div>
-        <div class="mb-2 text-[11px] text-ink/50">${r.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${r.inv ? ' · ' + r.inv.sku : ''}</div>
+        <div class="mb-2 text-[11px] text-ink/50">${new Date(r.time).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}${r.inv ? ' · ' + r.inv.sku : ''}</div>
         <div class="grid grid-cols-2 gap-1.5">
           <button data-raw-use="${r.id}" data-to="enhance" class="rounded-lg border border-line px-2 py-1.5 text-[11px] font-medium hover:border-gold">✨ Enhance</button>
           <button data-raw-use="${r.id}" data-to="model" class="rounded-lg border border-line px-2 py-1.5 text-[11px] font-medium hover:border-gold">👤 On model</button>
@@ -1446,7 +1476,7 @@ $('rawGrid').addEventListener('click', e => {
 });
 $('catGrid').addEventListener('click', e => {
   const b = e.target.closest('[data-cat-del]'); if (!b) return;
-  state.catalog = state.catalog.filter(c => c.id !== b.dataset.catDel); saveCatalog(); render();
+  state.catalog = state.catalog.filter(c => c.id !== b.dataset.catDel); idbDel('catalog', b.dataset.catDel).catch(() => {}); render();
 });
 
 // Inventory modal
@@ -1463,7 +1493,7 @@ $('invGrid').addEventListener('dragstart', e => {
 });
 $('invGrid').addEventListener('dragend', () => $('invModal').classList.remove('pointer-events-none', 'opacity-30'));
 
-renderAccount(); refreshAccount().then(render);
+renderAccount(); refreshAccount().then(render); loadSaved();
 ['studio', 'blendA', 'blendB', 'search'].forEach(wireDrop);
 wireActions('studio'); wireActions('blend');
 render();
