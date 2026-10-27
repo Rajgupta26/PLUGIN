@@ -94,6 +94,8 @@ Links made on `localhost` only open on that computer. On the live site, links ar
 2. **Connect** the store to the project for all environments
 3. Redeploy (Deployments → ⋯ → Redeploy), so the new settings reach the site
 
+Links always point at the project's production address (`VERCEL_PROJECT_PRODUCTION_URL`), even when made from a preview or branch address such as `plugin-git-main-….vercel.app`: Vercel asks visitors of those addresses to log in. Work from the production address too, since the catalog is saved per address in the browser.
+
 Until then, Create link shows "Sharing isn't switched on for this site yet". To check, open `/api/share/status` on the live site: it says `"on": true` once the store is connected and the site redeployed. `.vercelignore` keeps the Python server and other non-site files out of the deployment. Free (Hobby) limits per month: 1 GB stored, 2,000 uploads (each new photo and each link is one), 10,000 reads (each time a client opens a link is one), 10 GB downloads. If a limit is passed, Vercel pauses Blob for 30 days instead of charging.
 
 ## Tests

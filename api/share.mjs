@@ -1,7 +1,7 @@
 // Shared catalog links on Vercel: the same API as server/shares.py, with photos and link details kept in
 // Vercel Blob. Sharing switches on once a Blob store is connected to the project (Storage tab).
 //   POST   /api/share/image       upload one photo {data: "data:image/jpeg;base64,..."} -> {name, url}
-//   POST   /api/share             create a link from uploaded photos -> {id, key, url}
+//   POST   /api/share             create a link from uploaded photos -> {id, key, url} (url on the public address)
 //   GET    /api/share/<id>        the link's details
 //   DELETE /api/share/<id>        stop sharing (header X-Share-Key)
 //   GET    /api/share/img/<name>  a photo
@@ -33,6 +33,9 @@ const env = process.env;
 const token = env.BLOB_READ_WRITE_TOKEN || Object.values(env).find((v) => /^vercel_blob_rw_/.test(v || ''));
 const storeId = env.BLOB_STORE_ID || Object.entries(env).find(([k, v]) => k.endsWith('_STORE_ID') && /^store_/.test(v || ''))?.[1];
 const auth = token ? { token } : storeId ? { storeId } : null;   // passed to every Blob call
+// Links always point at the public production address: Vercel keeps preview and branch addresses
+// (plugin-git-main-….vercel.app) behind a Vercel login, so clients can't open links made there
+const site = env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : '';
 
 // A Blob store is either public or private: use whichever one the connected store accepts
 let access = process.env.JEWELREX_BLOB_ACCESS || null;
@@ -91,7 +94,7 @@ async function createShare(body) {
   const id = Array.from({ length: 10 }, () => ID_CHARS[randomInt(ID_CHARS.length)]).join('');
   await withAccess((a) => put(`shares/${id}.json`, JSON.stringify({ ...share, keyHash: sha256(key) }),
     { access: a, contentType: 'application/json', cacheControlMaxAge: 60, ...auth }));
-  return { id, key, url: `/s/${id}` };
+  return { id, key, url: `${site}/s/${id}` };
 }
 
 async function readShare(id) {
@@ -159,7 +162,7 @@ export default {
     const on = Boolean(auth);
     try {
       if (method === 'GET' && page != null) return await sharePage(url.origin, page, on);
-      if (method === 'GET' && id === 'status') return json(200, { on, via: token ? 'token' : storeId ? 'oidc' : null });
+      if (method === 'GET' && id === 'status') return json(200, { on, via: token ? 'token' : storeId ? 'oidc' : null, site: site || null });
       if (!on) return json(503, { error: 'sharing_off', message: 'Sharing is not switched on yet: no Vercel Blob store is connected to this deployment. Connect one in the project\'s Storage tab, then redeploy.' });
       if (method === 'GET' && img != null) return await shareImage(img);
       if (method === 'POST' && id === 'image') return json(201, await saveImage(await request.json()));

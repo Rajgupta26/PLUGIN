@@ -282,7 +282,7 @@ def share_create(h, conn):
 
 @route("GET", "/api/share/status")
 def share_status(h, conn):
-    return 200, {"on": True, "via": "local"}   # same answer shape as the Vercel function
+    return 200, {"on": True, "via": "local", "site": None}   # same answer shape as the Vercel function
 
 
 @route("GET", r"/api/share/([A-Za-z0-9]{10})")

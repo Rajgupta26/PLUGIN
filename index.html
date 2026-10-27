@@ -1435,9 +1435,28 @@ const shareUI = { picked: new Set(), title: 'Selected designs', note: '', contac
 const savedShares = () => { try { return JSON.parse(localStorage.getItem(SHARES_KEY) || '[]'); } catch { return []; } };
 function saveShares(list) { try { localStorage.setItem(SHARES_KEY, JSON.stringify(list.slice(0, 50))); } catch {} }
 
+// The address clients open links on. On Vercel the server names the public production address: preview and
+// branch addresses (plugin-git-main-….vercel.app) ask for a Vercel login, so links made there must not use them.
+// Elsewhere (the local server) it is this page's own address.
+let shareSite = (() => { try { return localStorage.getItem('jewelrex.shareSite') || ''; } catch { return ''; } })();
+function setShareSite(url) {   // true when it changed
+  const m = /^https?:\/\/[^/]+/.exec(url || '');
+  if (!m || m[0] === shareSite) return false;
+  shareSite = m[0]; try { localStorage.setItem('jewelrex.shareSite', shareSite); } catch {}
+  return true;
+}
+const shareUrl = (id) => `${shareSite || location.origin}/s/${id}`;
+
 function openShare(ids) {
   Object.assign(shareUI, { picked: new Set(ids || state.catalog.map(c => c.id)), status: shareUI.status === 'busy' ? 'busy' : 'pick', link: null, error: '' });
   openSheet('share');
+  // Learn the public address (also corrects links saved while working on a preview address)
+  api('GET', '/api/share/status').then(s => {
+    if (!setShareSite(s.site)) return;
+    // Re-rendering the form would reset what's being typed, so there only the saved links' addresses change
+    if (shareUI.status === 'pick') document.querySelectorAll('[data-share-open]').forEach(a => { a.href = shareUrl(a.dataset.shareOpen); });
+    else if ($('sheetBody').dataset.view === 'share') renderSheet('share');
+  }).catch(() => {});
 }
 
 // What the client sees for a piece: its type and inventory details (process labels like "On model" stay internal)
@@ -1483,7 +1502,8 @@ async function createShare() {
     const body = { title: shareUI.title, note: shareUI.note, business: profile.business, phone: shareUI.contact ? profile.phone : '',
       items: items.map((c, i) => ({ title: c.title, kind: shareKind(c), sku: c.inv ? c.inv.sku : '', details: shareDetails(c), ...photos[i] })) };
     const r = await api('POST', '/api/share', body);
-    const link = { id: r.id, key: r.key, url: location.origin + r.url, title: body.title.trim() || 'Selected designs', count: items.length, created: Date.now() };
+    setShareSite(r.url);   // the server returns the link on the public address when it knows it
+    const link = { id: r.id, key: r.key, title: body.title.trim() || 'Selected designs', count: items.length, created: Date.now() };
     saveShares([link, ...savedShares()]);
     Object.assign(shareUI, { status: 'done', link });
     if ($('sheet').classList.contains('hidden')) toast('Your catalog link is ready – open Share catalog to copy it');
@@ -1499,8 +1519,8 @@ function shareProgress() {
 
 async function copyShareLink(id) {
   const link = savedShares().find(l => l.id === id); if (!link) return;
-  try { await navigator.clipboard.writeText(link.url); toast('Link copied'); }
-  catch { const i = $('shareLinkInput'); if (i) { i.select(); document.execCommand('copy'); toast('Link copied'); } else toast(link.url); }
+  try { await navigator.clipboard.writeText(shareUrl(link.id)); toast('Link copied'); }
+  catch { const i = $('shareLinkInput'); if (i) { i.select(); document.execCommand('copy'); toast('Link copied'); } else toast(shareUrl(link.id)); }
 }
 async function stopShare(id) {
   const link = savedShares().find(l => l.id === id); if (!link) return;
@@ -1511,7 +1531,7 @@ async function stopShare(id) {
   if (shareUI.link && shareUI.link.id === id) Object.assign(shareUI, { status: 'pick', link: null });
   renderSheet('share'); toast('Sharing stopped');
 }
-const waShareHref = (l) => 'https://wa.me/?text=' + encodeURIComponent(`${l.title} – ${l.count} piece${l.count === 1 ? '' : 's'} from ${profile.business}\n${l.url}`);
+const waShareHref = (l) => 'https://wa.me/?text=' + encodeURIComponent(`${l.title} – ${l.count} piece${l.count === 1 ? '' : 's'} from ${profile.business}\n${shareUrl(l.id)}`);
 
 function shareLinksHTML() {
   const links = savedShares();
@@ -1522,7 +1542,7 @@ function shareLinksHTML() {
         <div class="min-w-0"><div class="truncate font-medium">${esc(l.title)}</div><div class="text-ink/50">${l.count} piece${l.count === 1 ? '' : 's'} · ${new Date(l.created).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</div></div>
         <div class="flex shrink-0 gap-1.5">
           <button data-share-copy="${l.id}" class="rounded-lg border border-line px-2.5 py-1.5 font-medium hover:border-gold">Copy</button>
-          <a href="${esc(l.url)}" target="_blank" rel="noopener" class="rounded-lg border border-line px-2.5 py-1.5 font-medium hover:border-gold">Open</a>
+          <a data-share-open="${l.id}" href="${esc(shareUrl(l.id))}" target="_blank" rel="noopener" class="rounded-lg border border-line px-2.5 py-1.5 font-medium hover:border-gold">Open</a>
           <button data-share-stop="${l.id}" class="rounded-lg border border-line px-2.5 py-1.5 font-medium text-ink/60 hover:border-red-300 hover:text-red-600">Stop sharing</button>
         </div></div>`).join('')}</div>`;
 }
@@ -1534,16 +1554,16 @@ function shareSheetHTML() {
       <p class="mt-3 text-sm font-medium">Uploading photos · <span id="shareProg">${s.done} of ${s.total}</span></p>
       <div class="mx-auto mt-3 h-1.5 max-w-sm overflow-hidden rounded-full bg-line"><div id="shareBar" class="gold-grad h-full transition-all duration-300" style="width:${s.done / s.total * 100}%"></div></div></div></div>`;
   if (s.status === 'done') {
-    const l = s.link, local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+    const l = s.link, url = shareUrl(l.id), local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(new URL(url).hostname);
     return head + `<div class="p-5 sm:p-6">
       <div class="rounded-xl border border-gold/50 bg-gold-light/10 p-5">
         <p class="font-mono text-[10px] tracking-[.18em] text-gold-deep">LINK READY · ${l.count} PIECE${l.count === 1 ? '' : 'S'}</p>
         <div class="mt-1 font-serif text-xl">${esc(l.title)}</div>
-        <div class="mt-4 flex gap-2"><input id="shareLinkInput" readonly value="${esc(l.url)}" class="min-w-0 flex-1 rounded-lg border border-line bg-white px-3 py-2.5 font-mono text-xs outline-none focus:border-gold"/>
+        <div class="mt-4 flex gap-2"><input id="shareLinkInput" readonly value="${esc(url)}" class="min-w-0 flex-1 rounded-lg border border-line bg-white px-3 py-2.5 font-mono text-xs outline-none focus:border-gold"/>
           <button data-share-copy="${l.id}" class="shrink-0 rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black">Copy link</button></div>
         <div class="mt-2 grid grid-cols-2 gap-2">
           <a target="_blank" rel="noopener" href="${esc(waShareHref(l))}" class="rounded-lg bg-[#1FA855] px-3 py-2.5 text-center text-sm font-medium text-white hover:bg-[#178F47]">Send on WhatsApp</a>
-          <a target="_blank" rel="noopener" href="${esc(l.url)}" class="rounded-lg border border-line bg-white px-3 py-2.5 text-center text-sm font-medium hover:border-gold">Open client view</a></div>
+          <a target="_blank" rel="noopener" href="${esc(url)}" class="rounded-lg border border-line bg-white px-3 py-2.5 text-center text-sm font-medium hover:border-gold">Open client view</a></div>
         <p class="mt-3 text-[11px] text-ink/50">Anyone with this link can see these pieces, no sign-in needed. You can stop sharing it any time.</p>
         ${local ? '<p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-900">Test link: it only opens on this computer while the local server runs. Share from your live site to send links to clients.</p>' : ''}
       </div>
