@@ -8,6 +8,7 @@ AI studio for jewellery businesses: product photo clean-up, try-on photos and a 
 - **Blend**: combines two designs into a new one
 - **Inventory Match**: searches stock from a client's reference photo (shows a "connect inventory" state until the ERP is linked)
 - **Raw / Catalog**: original uploads for the session, and finished results saved with "Add to Catalog" (kept in the browser), plus starter catalog photos in `catalog/`
+- **Share catalog**: pick pieces from the catalog (or one piece with its link icon), give the link a title and note, and send it to a client. The client opens `/s/<id>` on any phone without signing in: a gallery of the pieces with their details (never prices), a full-size view, and an "Enquire on WhatsApp" button when a phone number is set in Profile settings. "Stop sharing" turns a link off for everyone
 - **Credits**: live meter in the header, Credits & usage, Buy credits and Upgrade plan in the profile menu
 
 ## Run locally
@@ -58,6 +59,13 @@ Customer (account from `X-Account-Id` until real sign-in exists):
 - `POST /api/jobs` + `/api/jobs/{id}/complete|fail` browser-side tools (Enhance, Blend)
 - `POST /api/checkout` buy a pack or change plan (demo mode only until a gateway is connected)
 
+Shared catalog links (no account needed; served by `server/app.py` locally and `api/share.mjs` on Vercel):
+
+- `POST /api/share/image` upload one photo `{"data": "data:image/jpeg;base64,..."}`; photos are stored once, under the SHA-256 of their bytes
+- `POST /api/share` create a link from uploaded photos: returns `{id, key, url}`; the key is needed to stop sharing
+- `GET /api/share/{id}` the link's details, `DELETE /api/share/{id}` with header `X-Share-Key` stops sharing
+- `GET /s/{id}` the client's page (`share.html`, with WhatsApp / social preview tags), `GET /api/share/img/{name}` a photo
+
 Payment gateway: `POST /api/webhooks/payment`, header `X-Jewelrex-Signature` = hex HMAC-SHA256 of the raw body. Each event `id` is processed once; renewals grant credits once per `cycle_id`, top-ups once per `payment_id`.
 
 ```json
@@ -71,19 +79,30 @@ Admin (`X-Admin-Key`): `GET/PUT /api/admin/config` (plans, packs, warning thresh
 
 Show on Model / Mannequin call the Hugging Face Space `prithivMLmods/Qwen-Image-Edit-2511-LoRAs-Fast` on **ZeroGPU**. It is billed in GPU time against the token owner's daily ZeroGPU quota (beyond that, $1 per 10 GPU-minutes of prepaid Hugging Face credit), and the Space's xlarge GPU counts double. Each call is stored with its measured duration (an upper bound for GPU seconds) and an estimated cost; the actual cost is filled in from the Hugging Face bill. Customer credits and provider costs are tracked separately.
 
+## Switching on shared links on Vercel (one time)
+
+Links made on `localhost` only open on that computer. On the live site, links are stored in Vercel Blob:
+
+1. In the Vercel dashboard, open the project, then **Storage** → **Create** → **Blob** (Public or Private both work)
+2. **Connect** the store to the project for all environments
+3. Redeploy (Deployments → ⋯ → Redeploy), so the new settings reach the site
+
+Until then, Create link shows "Sharing isn't switched on for this site yet". Free (Hobby) limits per month: 1 GB stored, 2,000 uploads (each new photo and each link is one), 10,000 reads (each time a client opens a link is one), 10 GB downloads. If a limit is passed, Vercel pauses Blob for 30 days instead of charging.
+
 ## Tests
 
 ```bash
 cd server && python3 -m unittest discover -s tests -v
 ```
 
-Covers successful generation, multi-image requests, failed jobs, top-ups, exhausted limits, prepaid order, warnings, renewals, duplicate webhooks, signatures, admin limits, the append-only ledger and concurrent requests.
+Covers successful generation, multi-image requests, failed jobs, top-ups, exhausted limits, prepaid order, warnings, renewals, duplicate webhooks, signatures, admin limits, the append-only ledger and concurrent requests, plus shared links (photo checks, link details, the client page, stopping a link).
 
 ## Not production-ready yet
 
 - No sign-in: accounts are identified by a header. Add real authentication before going live.
 - No payment gateway: `DEMO_PAYMENTS` simulates payments. Connect e.g. Razorpay and point its webhook at `/api/webhooks/payment`.
 - Enhance and Blend run in the browser, so their completion is reported by the browser; AI generation is enforced by the server.
+- Anyone can call the share upload API until sign-in exists, and stopped links keep their photos in storage (other links may use the same photo).
 - The free Hugging Face Space has daily limits and no uptime guarantee.
 
 `visualizer-v1.html` is the earlier single-tool version.

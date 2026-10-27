@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex" />
+<!--SHARE-->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com/3.4.5"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ivory: '#FBF9F5',
+          ink: '#181715',
+          gold: { DEFAULT: '#C8A152', light: '#E6CE93', deep: '#A9843B' },
+          line: '#EADEC9',
+        },
+        fontFamily: {
+          serif: ['"Playfair Display"', 'serif'],
+          sans: ['Inter', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'monospace'],
+        },
+      },
+    },
+  };
+</script>
+<style>
+  body { background: #FBF9F5; }
+  .shimmer { background: linear-gradient(100deg, #f4eee3 30%, #fbf7ef 50%, #f4eee3 70%); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  .photo { opacity: 0; transition: opacity .5s ease, transform .6s ease; }
+  .photo.loaded { opacity: 1; }
+  .card:hover .photo { transform: scale(1.025); }
+  .rise { animation: rise .7s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  button, a { transition: transform .12s ease, background-color .15s ease, border-color .15s ease, box-shadow .15s ease; }
+  button:active, a:active { transform: scale(.97); }
+  button:focus-visible, a:focus-visible { outline: 2px solid #C8A152; outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { .rise, .photo { animation: none; transition: none; } .card:hover .photo { transform: none; } }
+</style>
+</head>
+<body class="font-sans text-ink antialiased">
+  <main id="app" class="min-h-screen"></main>
+
+  <!-- Full-size view of one piece -->
+  <div id="viewer" class="fixed inset-0 z-50 hidden flex-col bg-ivory/95 backdrop-blur-md" role="dialog" aria-modal="true" aria-label="Piece details">
+    <div class="flex items-center justify-between px-4 py-3 sm:px-6">
+      <span id="vCount" class="font-mono text-[11px] tracking-[.18em] text-ink/50"></span>
+      <button id="vClose" class="grid h-10 w-10 place-items-center rounded-full border border-line bg-white text-ink/70 hover:border-gold hover:text-ink" aria-label="Close">✕</button>
+    </div>
+    <div id="vBody" class="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 pb-8 sm:px-6 lg:flex-row lg:items-center lg:gap-12 lg:overflow-hidden lg:px-20">
+      <div class="flex shrink-0 items-center justify-center lg:min-h-0 lg:flex-1 lg:shrink">
+        <img id="vImg" class="max-h-[60vh] w-auto max-w-full rounded-2xl border border-line bg-white object-contain shadow-[0_20px_50px_-30px_rgba(24,23,21,.45)] lg:max-h-[80vh]" alt="" />
+      </div>
+      <div id="vInfo" class="mx-auto w-full max-w-md lg:w-[340px] lg:shrink-0"></div>
+    </div>
+    <button id="vPrev" class="absolute left-2 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-line bg-white/90 text-xl text-ink/70 shadow-sm hover:border-gold sm:left-4" aria-label="Previous piece">‹</button>
+    <button id="vNext" class="absolute right-2 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-line bg-white/90 text-xl text-ink/70 shadow-sm hover:border-gold sm:right-4" aria-label="Next piece">›</button>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const WA_ICON = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.7 14.9L2 22l5.2-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3.1.8.8-3-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.8-1.4.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3Z"/></svg>';
+let share = null, current = -1, cols = 0;
+
+// The server fills in window.SHARE for /s/<id>; otherwise (share.html?id=…) ask the API
+async function load() {
+  if (window.SHARE !== undefined) return window.SHARE;
+  const id = new URLSearchParams(location.search).get('id') || (location.pathname.match(/\/s\/([A-Za-z0-9]+)/) || [])[1];
+  if (!id) return null;
+  $('app').innerHTML = `<div class="mx-auto max-w-6xl px-5 pt-14 sm:px-8"><div class="shimmer h-4 w-40 rounded"></div><div class="shimmer mt-4 h-10 w-72 rounded-lg"></div>
+    <div class="mt-10 grid grid-cols-2 gap-5 md:grid-cols-3">${'<div class="shimmer aspect-[4/5] rounded-2xl"></div>'.repeat(6)}</div></div>`;
+  try { const r = await fetch(`/api/share/${encodeURIComponent(id)}`); return r.ok ? await r.json() : null; } catch { return null; }
+}
+
+// wa.me needs the full international number; 10-digit numbers are taken as Indian mobiles
+function waNumber(p) {
+  let d = String(p || '').replace(/\D/g, '');
+  if (d.length === 10) d = '91' + d;
+  else if (d.length === 11 && d[0] === '0') d = '91' + d.slice(1);
+  return d.length >= 11 ? d : '';
+}
+const pageUrl = () => location.href.split('#')[0];
+function enquireUrl(it) {
+  const hi = `Hi${share.business ? ' ' + share.business : ''}, I'm interested in ` +
+    (it ? `${it.title}${it.sku ? ` (${it.sku})` : ''} from your catalog` : `your catalog “${share.title}”`);
+  return `https://wa.me/${waNumber(share.phone)}?text=${encodeURIComponent(`${hi}: ${pageUrl()}`)}`;
+}
+
+function missing() {
+  document.title = 'Catalog not available';
+  $('app').innerHTML = `<div class="grid min-h-screen place-items-center px-6 text-center"><div class="rise">
+    <div class="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-full border border-gold/50 text-2xl text-gold-deep">◇</div>
+    <h1 class="font-serif text-3xl">This catalog is no longer shared</h1>
+    <p class="mx-auto mt-2 max-w-sm text-sm text-ink/60">The link may have been stopped. Ask your jeweller to send you a new one.</p>
+    <p class="mt-10 flex items-center justify-center gap-2 text-[11px] text-ink/40">Shared via <img src="/logo.png?v=3" alt="Jewelrex" class="h-6 w-auto opacity-80" /></p></div></div>`;
+}
+
+function card(it, i) {
+  const chips = it.details.filter(([k]) => k !== 'Stones').slice(0, 2).map(([, v]) => `<span class="rounded-full border border-line bg-white px-2 py-0.5">${esc(v)}</span>`).join('');
+  const tag = [it.sku, it.kind].filter(Boolean).map(esc).join(' · ');
+  return `<button data-i="${i}" class="card rise group block w-full text-left" style="animation-delay:${Math.min(i, 12) * 60}ms">
+    <div class="overflow-hidden rounded-2xl border border-line bg-white shadow-[0_18px_40px_-34px_rgba(24,23,21,.5)]" style="aspect-ratio:${it.w} / ${it.h}">
+      <img src="${esc(it.img)}" alt="${esc(it.title)}" loading="lazy" decoding="async" class="photo h-full w-full object-cover" onload="this.classList.add('loaded')" />
+    </div>
+    <div class="px-1 pt-3">
+      ${tag ? `<div class="font-mono text-[10px] uppercase tracking-wider text-gold-deep">${tag}</div>` : ''}
+      <div class="font-serif text-[15px] leading-snug sm:text-lg">${esc(it.title)}</div>
+      ${chips ? `<div class="mt-2 flex flex-wrap gap-1.5 text-[11px] text-ink/70">${chips}</div>` : ''}
+    </div></button>`;
+}
+
+// Masonry: each piece goes into the shortest column, so photos keep their own shape and roughly their order
+function layout() {
+  const n = innerWidth >= 1280 ? 4 : innerWidth >= 768 ? 3 : 2;
+  if (!share || n === cols) return;
+  cols = n;
+  const heights = Array(n).fill(0), columns = Array.from({ length: n }, () => []);
+  share.items.forEach((it, i) => { const c = heights.indexOf(Math.min(...heights)); columns[c].push(i); heights[c] += it.h / it.w + .5; });
+  const grid = $('grid');
+  grid.style.gridTemplateColumns = `repeat(${n}, minmax(0, 1fr))`;
+  grid.innerHTML = columns.map(col => `<div class="flex flex-col gap-7 sm:gap-9">${col.map(i => card(share.items[i], i)).join('')}</div>`).join('');
+  grid.querySelectorAll('img.photo').forEach(im => { if (im.complete && im.naturalWidth) im.classList.add('loaded'); });
+}
+
+function render() {
+  document.title = share.title + (share.business ? ' · ' + share.business : '');
+  const n = share.items.length, when = new Date(share.created).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  const wa = waNumber(share.phone);
+  $('app').innerHTML = `
+    <header class="mx-auto max-w-6xl px-5 pb-8 pt-12 sm:px-8 sm:pt-16">
+      <div class="rise flex items-center gap-3"><span class="h-px w-8 bg-gold"></span><p class="font-mono text-[11px] tracking-[.22em] text-gold-deep">${share.business ? esc(share.business.toUpperCase()) : 'JEWELLERY CATALOG'}</p></div>
+      <h1 class="rise mt-4 max-w-3xl font-serif text-4xl leading-[1.08] sm:text-6xl" style="animation-delay:80ms">${esc(share.title)}</h1>
+      <p class="rise mt-4 text-sm text-ink/55" style="animation-delay:140ms">${n} piece${n === 1 ? '' : 's'} · Shared ${esc(when)}</p>
+      ${share.note ? `<p class="rise mt-6 max-w-2xl border-l-2 border-gold pl-4 font-serif text-lg italic leading-relaxed text-ink/80" style="animation-delay:200ms">${esc(share.note)}</p>` : ''}
+    </header>
+    <section class="mx-auto max-w-6xl px-5 pb-28 sm:px-8"><div id="grid" class="grid gap-4 sm:gap-7"></div></section>
+    <footer class="border-t border-line py-8 text-center text-[11px] text-ink/40"><span class="inline-flex items-center gap-2">Shared via <img src="/logo.png?v=3" alt="Jewelrex" class="h-6 w-auto opacity-80" /></span></footer>
+    ${wa ? `<a href="${esc(enquireUrl(null))}" target="_blank" rel="noopener" class="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-[#1FA855] px-5 py-3 text-sm font-medium text-white shadow-[0_12px_30px_-12px_rgba(31,168,85,.8)] hover:bg-[#178F47]">${WA_ICON} Enquire</a>` : ''}`;
+  cols = 0; layout();
+}
+
+/* ---- full-size viewer ---- */
+let lastFocus = null;
+function show(i) {
+  current = (i + share.items.length) % share.items.length;
+  const it = share.items[current], wa = waNumber(share.phone);
+  $('vImg').src = it.img; $('vImg').alt = it.title;
+  $('vCount').textContent = `${current + 1} / ${share.items.length}`;
+  $('vInfo').innerHTML = `
+    ${[it.sku, it.kind].filter(Boolean).length ? `<div class="font-mono text-[11px] uppercase tracking-wider text-gold-deep">${[it.sku, it.kind].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
+    <h2 class="mt-1 font-serif text-3xl leading-tight">${esc(it.title)}</h2>
+    ${it.details.length ? `<dl class="mt-5 grid grid-cols-2 gap-2">${it.details.map(([k, v]) => `<div class="rounded-xl border border-line bg-white px-3 py-2"><dt class="font-mono text-[9px] uppercase tracking-[.15em] text-ink/50">${esc(k)}</dt><dd class="text-sm font-semibold">${esc(v)}</dd></div>`).join('')}</dl>` : ''}
+    ${wa ? `<a href="${esc(enquireUrl(it))}" target="_blank" rel="noopener" class="mt-6 flex items-center justify-center gap-2 rounded-xl bg-[#1FA855] px-4 py-3 text-sm font-medium text-white hover:bg-[#178F47]">${WA_ICON} Enquire about this piece</a>` : ''}`;
+  const one = share.items.length < 2;
+  $('vPrev').classList.toggle('hidden', one); $('vNext').classList.toggle('hidden', one);
+}
+function openViewer(i) {
+  lastFocus = document.activeElement;
+  if (!history.state || !history.state.viewer) history.pushState({ viewer: true }, '');   // phone back button closes it
+  show(i);
+  $('viewer').classList.remove('hidden'); $('viewer').classList.add('flex');
+  document.documentElement.style.overflow = 'hidden';
+  $('vClose').focus();
+}
+function hideViewer() {
+  $('viewer').classList.add('hidden'); $('viewer').classList.remove('flex');
+  document.documentElement.style.overflow = '';
+  current = -1;
+  if (lastFocus) lastFocus.focus({ preventScroll: true });
+}
+const closeViewer = () => (history.state && history.state.viewer ? history.back() : hideViewer());
+
+addEventListener('popstate', () => { if (current >= 0) hideViewer(); });
+document.addEventListener('click', e => { const c = e.target.closest('[data-i]'); if (c) openViewer(+c.dataset.i); });
+$('vClose').addEventListener('click', closeViewer);
+$('vPrev').addEventListener('click', () => show(current - 1));
+$('vNext').addEventListener('click', () => show(current + 1));
+$('viewer').addEventListener('click', e => { if (e.target === $('viewer') || e.target === $('vBody')) closeViewer(); });
+document.addEventListener('keydown', e => {
+  if (current < 0) return;
+  if (e.key === 'Escape') closeViewer();
+  else if (e.key === 'ArrowLeft') show(current - 1);
+  else if (e.key === 'ArrowRight') show(current + 1);
+});
+let touchX = null;
+$('viewer').addEventListener('touchstart', e => { touchX = e.touches.length === 1 ? e.touches[0].clientX : null; }, { passive: true });
+$('viewer').addEventListener('touchend', e => {
+  if (touchX === null) return;
+  const dx = e.changedTouches[0].clientX - touchX; touchX = null;
+  if (Math.abs(dx) > 50) show(current + (dx < 0 ? 1 : -1));
+});
+addEventListener('resize', layout);
+
+load().then(s => { share = s; if (share && share.items && share.items.length) render(); else missing(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "rewrites": [
+    { "source": "/s/:id", "destination": "/api/share?page=:id" },
+    { "source": "/api/share/img/:name", "destination": "/api/share?img=:name" },
+    { "source": "/api/share/:id", "destination": "/api/share?id=:id" }
+  ],
+  "functions": {
+    "api/share.mjs": { "includeFiles": "share.html" }
+  }
+}

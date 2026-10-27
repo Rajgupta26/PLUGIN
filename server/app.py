@@ -26,9 +26,11 @@ from urllib.parse import urlparse
 sys.path.insert(0, str(Path(__file__).parent))
 import billing  # noqa: E402
 import provider  # noqa: E402
+import shares  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = os.environ.get("JEWELREX_DB", str(ROOT / "server" / "data" / "jewelrex.db"))
+SHARES = shares.LocalStore(Path(DB_PATH).parent / "shares")   # shared catalog links (Vercel keeps them in Blob)
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "")
 DEMO_PAYMENTS = os.environ.get("DEMO_PAYMENTS", "1") == "1"
@@ -52,11 +54,16 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*a, directory=str(ROOT), **kw)
 
     def log_message(self, fmt, *args):
-        if "/api/" in (args[0] if args else ""):
+        if "/api/" in str(args[0] if args else ""):   # args[0] is a status code for send_error
             super().log_message(fmt, *args)
 
     # ---- dispatch
     def do_GET(self):
+        path = urlparse(self.path).path
+        if path.startswith("/api/share/img/"):
+            return self._share_image(path.rsplit("/", 1)[1])
+        if path.startswith("/s/"):
+            return self._share_page(path[3:])
         if self.path.startswith("/api/"):
             return self._api("GET")
         if self.path.startswith("/server/") or self.path.startswith("/.git"):
@@ -69,8 +76,11 @@ class Handler(SimpleHTTPRequestHandler):
     def do_PUT(self):
         return self._api("PUT")
 
+    def do_DELETE(self):
+        return self._api("DELETE")
+
     def end_headers(self):
-        if not self.path.startswith("/api/"):
+        if not self.path.startswith(("/api/", "/s/")):
             self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
@@ -85,7 +95,7 @@ class Handler(SimpleHTTPRequestHandler):
                 except billing.InsufficientCredits as e:
                     status, body = 402, {"error": "insufficient_credits", "message": str(e),
                                          "needed": e.needed, "available": e.available}
-                except billing.BillingError as e:
+                except (billing.BillingError, shares.ShareError) as e:
                     status, body = e.status, {"error": type(e).__name__, "message": str(e)}
                 except (ValueError, KeyError, json.JSONDecodeError) as e:
                     status, body = 400, {"error": "bad_request", "message": str(e)}
@@ -119,13 +129,30 @@ class Handler(SimpleHTTPRequestHandler):
             raise billing.InvalidSignature("admin key required")
 
     def _json(self, status, body):
-        data = json.dumps(body).encode()
+        self._send(status, json.dumps(body).encode(), "application/json", "no-store")
+
+    def _send(self, status, data, content_type, cache):
         self.send_response(status)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache)
         self.end_headers()
         self.wfile.write(data)
+
+    def _share_image(self, name):
+        found = SHARES.image(name)
+        if not found:
+            return self.send_error(404)
+        # Photos are stored under the hash of their bytes, so they never change
+        self._send(200, found[0], found[1], "public, max-age=31536000, immutable")
+
+    def _share_page(self, share_id):
+        """The client's view of a shared link: share.html with the link's details and preview tags filled in."""
+        share = SHARES.get(share_id)
+        share = share and shares.public(share, share_id)
+        page = (ROOT / "share.html").read_text().replace(
+            "<!--SHARE-->", shares.page_head(share, f"http://{self.headers.get('Host', 'localhost')}"), 1)
+        self._send(200 if share else 404, page.encode(), "text/html; charset=utf-8", "no-store")
 
 
 def account_view(conn, acc):
@@ -221,6 +248,32 @@ def checkout(h, conn):
     raw = json.dumps(event).encode()
     billing.process_webhook(conn, raw, billing.sign(raw, _DEMO_SECRET), _DEMO_SECRET)
     return 200, {"account": account_view(conn, acc)}
+
+
+@route("POST", "/api/share/image")
+def share_image(h, conn):
+    """Upload one photo for a shared link (JSON {"data": "data:image/jpeg;base64,..."})."""
+    return 201, SHARES.save_image(h.body().get("data"))
+
+
+@route("POST", "/api/share")
+def share_create(h, conn):
+    """Create a link from uploaded photos. The key it returns is needed to stop sharing."""
+    return 201, SHARES.create(h.body())
+
+
+@route("GET", r"/api/share/([A-Za-z0-9]{10})")
+def share_get(h, conn, share_id):
+    share = SHARES.get(share_id)
+    if not share:
+        raise shares.NotFound("this link is no longer shared")
+    return 200, shares.public(share, share_id)
+
+
+@route("DELETE", r"/api/share/([A-Za-z0-9]{10})")
+def share_delete(h, conn, share_id):
+    SHARES.delete(share_id, h.headers.get("X-Share-Key"))
+    return 200, {"ok": True}
 
 
 @route("POST", "/api/webhooks/payment")

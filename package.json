@@ -1,0 +1,8 @@
+{
+  "name": "jewelrex-ai-studio",
+  "private": true,
+  "description": "Static app; api/share.mjs is the Vercel function behind shared catalog links",
+  "dependencies": {
+    "@vercel/blob": "^2.8.2"
+  }
+}
