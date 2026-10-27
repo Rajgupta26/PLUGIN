@@ -304,15 +304,15 @@ const FRAME = 'w=1200&h=1500&fit=crop&q=85';
 // Model photos for Show on Model. Maya and Meera are the client's own jewellery-free photos (models/ folder).
 // focus: for small pieces the AI works on a square close-up of this spot (centre cx/cy as fractions of the
 // photo, size w as a fraction of its width), which is then blended back into the full photo.
-// Earrings use view instead: a head-and-shoulders portrait (left x, top y, width w as fractions, 4:5), so the whole
-// face shows while the earring keeps the photo's full sharpness; cx/cy mark the earlobe.
+// Earrings are made on that close-up too (so the AI draws the earring big enough to copy its design) and then
+// placed into view: a head-and-shoulders portrait (left x, top y, width w as fractions, 4:5) showing the whole face.
 const MODELS = [
   { id: 'maya', name: 'Maya', src: 'models/maya.jpg', group: 'model', types: ['necklace', 'earrings'],
-    focus: { earrings: { cx: .29, cy: .33, view: { x: .06, y: 0, w: .72 } }, necklace: { top: .50 } } },
+    focus: { earrings: { cx: .29, cy: .33, w: .42, view: { x: .06, y: 0, w: .72 } }, necklace: { top: .50 } } },
   { id: 'meera', name: 'Meera', src: 'models/meera.jpg', group: 'model', types: ['necklace', 'earrings'],
-    focus: { earrings: { cx: .70, cy: .41, view: { x: .15, y: .02, w: .72 } }, necklace: { top: .60 } } },
+    focus: { earrings: { cx: .70, cy: .41, w: .42, view: { x: .15, y: .02, w: .72 } }, necklace: { top: .60 } } },
   { id: 'zara', name: 'Zara', src: 'models/zara.jpg', group: 'model', types: ['necklace', 'earrings'],
-    focus: { earrings: { cx: .58, cy: .47, view: { x: .03, y: .12, w: .72 } }, necklace: { top: .63 } } },
+    focus: { earrings: { cx: .58, cy: .47, w: .42, view: { x: .03, y: .12, w: .72 } }, necklace: { top: .63 } } },
   { id: 'wrist-aria', name: 'Aria', src: 'models/wrist-aria.jpg', group: 'model', types: ['bracelet'] },
   { id: 'hand', name: 'Hand', src: U('photo-1617069897015-7d27a76232ed', FRAME), group: 'model', types: ['ring', 'bracelet'],
     focus: { ring: { cx: .53, cy: .46, w: .55 } } },
@@ -665,7 +665,8 @@ async function toDataURL(src, max = 1024) {
   return c.toDataURL('image/jpeg', .9);
 }
 
-function aiPrompt(type, metal, group) {
+// earring: 'stud' or 'drop' (see earringStyle), so the AI wears it the right way instead of guessing
+function aiPrompt(type, metal, group, earring) {
   const m = metal && metal !== 'original' ? ` in ${METALS.find(x => x[0] === metal)[1].toLowerCase()}` : '';
   if (group === 'mannequin') {
     const keepM = `Keep the jewellery design exactly identical to image 2: same shape, stones, metal colour and size. Keep the display, its colour, the background and the lighting exactly the same as image 1, with exactly the same framing and camera distance; do not zoom in, zoom out or crop. Realistic contact shadows and reflections. Photorealistic high-end jewellery shop display photo.`;
@@ -684,8 +685,13 @@ function aiPrompt(type, metal, group) {
   const keep = (what) => `Keep the jewellery design exactly identical to image 2: same shape, stones and metal colour. Keep ${what} exactly the same as image 1, with the same framing. ` +
     `Realistic size, perspective, shadows and reflections where the jewellery touches the skin. Photorealistic high-end jewellery catalogue photo.`;
   return {
-    earrings: `Image 1 is a head-and-shoulders portrait of a woman. Add the earring from image 2${m} to her visible ear: it is worn on her earlobe through the piercing (a stud sits on the earlobe, a drop hangs below it), at the real size of an earring, small next to her face. ` +
-      `Keep exactly the same framing, camera distance and composition as image 1: her whole face must stay fully visible; do not zoom in, zoom out or crop. ` + keep('her face, ear, hair, skin, clothes and background'),
+    earrings: (earring === 'stud'
+      ? `Image 1 is a close-up of a woman's ear. Put the stud earring from image 2${m} on the front of her earlobe, sitting flat at the piercing, at the real size of a stud earring (about as big as her earlobe). Nothing hangs below it. `
+      : earring === 'drop'
+      ? `Image 1 is a close-up of a woman's ear. Add the drop earring from image 2${m} to her earlobe: it hangs from the piercing, at the real size of an earring. `
+      : `Image 1 is a close-up of a woman's ear. Add the earring from image 2${m} to her earlobe, worn at the piercing the way it is designed to be worn, at its real size. `) +
+      `Copy the earring from image 2 exactly: the same shape, pattern, stones and metal colour. Do not add, remove or change any part of it: no extra drops, hoops, chains or pearls. Do not zoom in or out. ` +
+      keep('her ear, hair, skin, face and background'),
     ring: `Image 1 is a close-up of a woman's hand. Put the ring from image 2${m} on her ring finger: the band wraps around the finger near its base, seen in correct perspective, at the real size of a ring. ` + keep('the hand, fingers, nails, skin and background'),
     bracelet: `Image 1 shows a woman's hand and wrist. Put the bracelet from image 2${m} around her wrist, just below the hand where the wrist is narrowest: it wraps all the way around the wrist following its curve, sits flat against the skin, and its front faces the camera. Real size of a bracelet. ` +
       `Keep the hand, fingers, wrist and arm exactly the same shape, size, pose and position as image 1; do not change or redraw the hand. ` + keep('the skin, clothes and background'),
@@ -722,10 +728,6 @@ function focusRect(model, type, im) {
   const f = model.focus && model.focus[type]; if (!f) return null;
   const W = im.naturalWidth, H = im.naturalHeight;
   if (f.top != null) return null;
-  if (f.view) {   // head-and-shoulders portrait, 4:5, kept inside the photo
-    const w = Math.round(Math.min(f.view.w * W, W, H * .8)), h = Math.round(w * 1.25);
-    return { x: Math.round(Math.min(f.view.x * W, W - w)), y: Math.round(Math.min(f.view.y * H, H - h)), w, h };
-  }
   const side = Math.round(Math.min(f.w * W, W, H));
   const x = Math.round(Math.min(Math.max(f.cx * W - side / 2, 0), W - side));
   const y = Math.round(Math.min(Math.max(f.cy * H - side / 2, 0), H - side));
@@ -782,33 +784,90 @@ async function blendBack(im, r, outSrc) {
   return full.toDataURL('image/jpeg', .93);
 }
 
-// Earrings: the result is the head-and-shoulders portrait. If the AI kept its framing, only a soft-edged area
-// around the ear (and below it, where an earring hangs) comes from the AI photo, colour-matched, so her face stays
-// exactly as in the original. If it re-framed anyway, its photo is used as it is.
-async function blendEar(im, r, outSrc, ear) {
-  const out = await loadImg(outSrc), w = r.w, h = r.h;
-  const ai = canvasOf(w, h), ax = ai.getContext('2d', { willReadFrequently: true });
-  ax.drawImage(out, 0, 0, w, h);
-  const orig = canvasOf(w, h), ox = orig.getContext('2d', { willReadFrequently: true });
-  ox.drawImage(im, r.x, r.y, w, h, 0, 0, w, h);
-  if (shotChanged(ai, orig)) return null;
-  const ex = ear.cx * im.naturalWidth - r.x, ey = ear.cy * im.naturalHeight - r.y, rx = w * .2, ry = h * .22;
-  // Colour drift, measured away from the ear where nothing should change
-  const ad = ax.getImageData(0, 0, w, h), d = ad.data, od = ox.getImageData(0, 0, w, h).data, sumA = [0, 0, 0], sumO = [0, 0, 0];
-  for (let y = 0; y < h; y += 3) for (let x = 0; x < w; x += 3) {
-    if (((x - ex) / (rx * 1.6)) ** 2 + ((y - ey - ry * .3) / (ry * 1.6)) ** 2 < 1) continue;
-    const i = (y * w + x) * 4;
-    for (let k = 0; k < 3; k++) { sumA[k] += d[i + k]; sumO[k] += od[i + k]; }
+// Earrings: the AI works on a close-up of the ear, where the earring is big enough for it to copy the design, and
+// the result is placed into a head-and-shoulders portrait so her whole face shows. The portrait is made 1.5× the
+// photo's size so the earring keeps the close-up's detail when zoomed. Only a soft-edged area around the ear comes
+// from the AI photo (colour-matched); the rest is the original photo.
+const PORTRAIT_SCALE = 1.5, ALIGN_MAX_ERR = 20;   // lined-up close-ups score about 3–8, unrelated photos 45+
+function viewRect(f, im) {   // the head-and-shoulders portrait (4:5) in photo pixels
+  const W = im.naturalWidth, H = im.naturalHeight, w = Math.round(Math.min(f.view.w * W, W, H * .8)), h = Math.round(w * 1.25);
+  return { x: Math.round(Math.min(f.view.x * W, W - w)), y: Math.round(Math.min(f.view.y * H, H - h)), w, h };
+}
+
+// From the shape of one earring when the photo shows a clear pair, as product photos do: 'stud' when it is about as
+// tall as it is wide, 'drop' when clearly taller. Otherwise null, and the AI is only told to copy it as it is.
+async function earringStyle(up) {
+  const parts = splitPair(await getCutout(up, 'earrings'));
+  if (!parts) return null;
+  const ratio = parts[0].height / parts[0].width;
+  return ratio <= 1.25 ? 'stud' : ratio >= 1.45 ? 'drop' : null;
+}
+
+// The AI may shift or zoom its close-up a little. Find the zoom s and shift (dx, dy, fractions of the close-up) that
+// line it up with the photo best, comparing everything except the ear, where the earring was added: the AI's pixel at
+// (u, v) shows the photo at close-up position (.5 + (u - .5) / s + dx, .5 + (v - .5) / s + dy). Null if nothing fits.
+function alignCloseUp(im, r, out, ear) {
+  const G = 48, N = 192, M = .2;   // compare on a 48×48 grid; sample a 192×192 copy of the photo reaching 20% past the close-up
+  const grey = (c, n) => { const d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, n, n).data, g = new Float32Array(n * n);
+    for (let i = 0; i < n * n; i++) g[i] = (d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 3; return g; };
+  const a = canvasOf(G, G); a.getContext('2d').drawImage(out, 0, 0, G, G);
+  const o = canvasOf(N, N), ox = o.getContext('2d'); ox.fillStyle = '#808080'; ox.fillRect(0, 0, N, N);
+  ox.drawImage(im, r.x - r.w * M, r.y - r.h * M, r.w * (1 + 2 * M), r.h * (1 + 2 * M), 0, 0, N, N);
+  const ag = grey(a, G), og = grey(o, N);
+  const eu = (ear.cx * im.naturalWidth - r.x) / r.w, ev = (ear.cy * im.naturalHeight - r.y) / r.h, pts = [];
+  for (let j = 0; j < G; j++) for (let i = 0; i < G; i++)
+    if ((((i + .5) / G - eu) / .26) ** 2 + (((j + .5) / G - ev - .1) / .36) ** 2 > 1) pts.push(i, j);
+  const n = pts.length / 2, sample = new Float32Array(n);
+  let am = 0; for (let k = 0; k < n; k++) am += ag[pts[2 * k + 1] * G + pts[2 * k]]; am /= n;
+  let best = { err: Infinity };
+  for (let si = 0; si <= 13; si++) for (let yi = -8; yi <= 8; yi++) for (let xi = -8; xi <= 8; xi++) {
+    const s = .9 + si * .025, dx = xi * .01, dy = yi * .01;
+    let om = 0, err = 0;
+    for (let k = 0; k < n; k++) {
+      const pu = .5 + ((pts[2 * k] + .5) / G - .5) / s + dx, pv = .5 + ((pts[2 * k + 1] + .5) / G - .5) / s + dy;
+      const X = Math.min(N - 1, Math.max(0, Math.floor((pu + M) / (1 + 2 * M) * N))), Y = Math.min(N - 1, Math.max(0, Math.floor((pv + M) / (1 + 2 * M) * N)));
+      om += (sample[k] = og[Y * N + X]);
+    }
+    om /= n;   // compare after removing the average, so an overall brighter or darker AI photo still lines up
+    for (let k = 0; k < n; k++) err += Math.abs(ag[pts[2 * k + 1] * G + pts[2 * k]] - am - (sample[k] - om));
+    if ((err /= n) < best.err) best = { err, s, dx, dy };
   }
-  const gain = sumA.map((v, k) => Math.min(1.15, Math.max(.87, sumO[k] / Math.max(1, v))));
+  alignCloseUp.last = best;
+  return best.err < ALIGN_MAX_ERR ? best : null;
+}
+
+async function earringPortrait(im, r, outSrc, ear) {
+  const out = await loadImg(outSrc), fit = alignCloseUp(im, r, out, ear);
+  if (!fit) return null;
+  const V = viewRect(ear, im), S = PORTRAIT_SCALE, W = Math.round(V.w * S), H = Math.round(V.h * S);
+  const c = canvasOf(W, H), x = c.getContext('2d', { willReadFrequently: true });
+  x.imageSmoothingQuality = 'high'; x.drawImage(im, V.x, V.y, V.w, V.h, 0, 0, W, H);
+  // Where the AI's close-up lands in the portrait
+  const pw = Math.round(r.w / fit.s * S), ph = Math.round(r.h / fit.s * S);
+  const px = Math.round((r.x + r.w * (.5 - .5 / fit.s + fit.dx) - V.x) * S), py = Math.round((r.y + r.h * (.5 - .5 / fit.s + fit.dy) - V.y) * S);
+  const patch = canvasOf(pw, ph), pc = patch.getContext('2d', { willReadFrequently: true });
+  pc.imageSmoothingQuality = 'high'; pc.drawImage(out, 0, 0, pw, ph);
+  // The ear area (earring and the skin around it), in patch pixels
+  const ex = (ear.cx * im.naturalWidth - V.x) * S - px, ey = (ear.cy * im.naturalHeight - V.y) * S - py + r.h * .1 * S;
+  const rx = r.w * .26 * S, ry = r.h * .36 * S;
+  // Colour drift, measured on the rest of the close-up where nothing should change
+  const pd = pc.getImageData(0, 0, pw, ph), d = pd.data, ud = x.getImageData(px, py, pw, ph).data, sumP = [0, 0, 0], sumU = [0, 0, 0];
+  for (let yy = 0; yy < ph; yy += 3) for (let xx = 0; xx < pw; xx += 3) {
+    const i = (yy * pw + xx) * 4;
+    if (!ud[i + 3] || ((xx - ex) / rx) ** 2 + ((yy - ey) / ry) ** 2 < 1.4) continue;   // outside the portrait, or near the ear
+    for (let k = 0; k < 3; k++) { sumP[k] += d[i + k]; sumU[k] += ud[i + k]; }
+  }
+  const gain = sumP.map((v, k) => Math.min(1.15, Math.max(.87, sumU[k] / Math.max(1, v))));
   for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) d[i + k] = Math.min(255, d[i + k] * gain[k]);
-  ax.putImageData(ad, 0, 0);
-  const f = Math.round(Math.min(w, h) * .05), mask = canvasOf(w, h), mx = mask.getContext('2d');
-  mx.filter = `blur(${f}px)`; mx.fillStyle = '#000';
-  mx.beginPath(); mx.ellipse(ex, ey + ry * .3, rx, ry, 0, 0, Math.PI * 2); mx.fill();
-  ax.globalCompositeOperation = 'destination-in'; ax.drawImage(mask, 0, 0);
-  ox.drawImage(ai, 0, 0);
-  return orig.toDataURL('image/jpeg', .93);
+  pc.putImageData(pd, 0, 0);
+  // Soft-edged ellipse, kept inside the patch so the patch's own edges never show
+  const f = Math.round(Math.min(pw, ph) * .05), hard = canvasOf(pw, ph), hx = hard.getContext('2d');
+  hx.beginPath(); hx.rect(f * 1.5, f * 1.5, pw - f * 3, ph - f * 3); hx.clip();
+  hx.fillStyle = '#000'; hx.beginPath(); hx.ellipse(ex, ey, rx, ry, 0, 0, Math.PI * 2); hx.fill();
+  const mask = canvasOf(pw, ph), mx = mask.getContext('2d'); mx.filter = `blur(${f / 2}px)`; mx.drawImage(hard, 0, 0);
+  pc.globalCompositeOperation = 'destination-in'; pc.drawImage(mask, 0, 0);
+  x.drawImage(patch, px, py);
+  return c.toDataURL('image/jpeg', .92);
 }
 
 // Necklaces: if the AI kept the photo's framing, take only the part below the chin from its result and keep
@@ -835,20 +894,22 @@ async function generateOnModel(up) {
   const [im, piece] = await Promise.all([loadImg(model.src), pieceOnWhite(up, model.id.startsWith('earring-stand'))]);
   const rect = focusRect(model, state.type, im);
   const base = rect ? cropToDataURL(im, rect) : await toDataURL(model.src);
+  const earring = state.type === 'earrings' && model.group === 'model' ? await earringStyle(up) : null;
+  const prompt = aiPrompt(state.type, state.studio.metal, model.group, earring);
   let res;
   if (testMode) {
-    res = { image: await generateDirect(JSON.stringify([base, piece]), aiPrompt(state.type, state.studio.metal, model.group)) };
+    res = { image: await generateDirect(JSON.stringify([base, piece]), prompt) };
     testCharge(model.group === 'mannequin' ? 'mannequin' : 'model');
   } else try {
     res = await api('POST', '/api/generate', {
       tool: model.group === 'mannequin' ? 'mannequin' : 'model', images_b64_json: JSON.stringify([base, piece]),
-      prompt: aiPrompt(state.type, state.studio.metal, model.group), style: AI_STYLE, hf_token: hfToken() || undefined,
+      prompt, style: AI_STYLE, hf_token: hfToken() || undefined,
     });
   } catch (e) { if (e.data && e.data.account) setAccount(e.data.account); throw e; }
   if (res.account) setAccount(res.account);
   const out = res.image;
   const f = model.focus && model.focus[state.type], chin = f && f.top;
-  const photo = f && f.view ? (await blendEar(im, rect, out, f)) || out   // earrings: the portrait itself
+  const photo = f && f.view ? (await earringPortrait(im, rect, out, f)) || out   // earrings: the close-up placed in a portrait
     : (rect && await blendBack(im, rect, out)) || (chin != null && await keepFace(im, chin, out)) || out;
   return { photo, photoImg: await loadImg(photo), model, secs: Math.round((Date.now() - t0) / 1000) };
 }
