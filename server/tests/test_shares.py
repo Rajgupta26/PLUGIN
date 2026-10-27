@@ -164,6 +164,23 @@ class ShareApiTest(unittest.TestCase):
         s, _, _ = self.call("GET", f"/api/share/{link['id']}")
         self.assertEqual(s, 404)
 
+    def test_private_files_are_not_served(self):
+        for path in ("/server/app.py", "/%73erver/app.py", "/./server/billing.py", "/models/../server/app.py",
+                     "/server%2Fapp.py", "/.git/config", "/%2egit/config", "/.claude/launch.json", "/catalog/",
+                     "/README.md", "/package.json", "/api/share.mjs"):
+            req = urllib.request.Request(self.base + path)
+            req.full_url = self.base + path   # keep "." and ".." exactly as written
+            for method in ("GET", "HEAD"):
+                req.method = method
+                try:
+                    with urllib.request.urlopen(req) as r:
+                        self.fail(f"{method} {path} was served ({r.status})")
+                except urllib.error.HTTPError as e:
+                    self.assertEqual(e.code, 404, f"{method} {path}")
+        for path in ("/", "/index.html", "/share.html", "/logo.png?v=3", "/catalog/lotus-diamond-ring.jpg", "/models/maya.jpg"):
+            s, _, _ = self.call("GET", path)
+            self.assertEqual(s, 200, path)
+
     def test_bad_requests(self):
         s, _, raw = self.call("POST", "/api/share/image", {"data": "data:image/jpeg;base64,bm90IGEgcGhvdG8="})
         self.assertEqual(s, 400)

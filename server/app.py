@@ -39,6 +39,11 @@ AI_STYLE = "Anything2Real"
 # Self-signed demo checkouts go through the same webhook path as real ones
 _DEMO_SECRET = WEBHOOK_SECRET or uuid.uuid4().hex
 
+# The only files the server hands out: the app's pages and images. Everything else (this server's code,
+# its database, git and editor folders) is refused, however the path is written.
+PUBLIC_FILES = {"index.html", "share.html", "styles.css", "logo.png"}
+PUBLIC_DIRS = {"catalog", "models"}
+
 ROUTES = []
 
 
@@ -66,9 +71,22 @@ class Handler(SimpleHTTPRequestHandler):
             return self._share_page(path[3:])
         if self.path.startswith("/api/"):
             return self._api("GET")
-        if self.path.startswith("/server/") or self.path.startswith("/.git"):
+        if not self._public():
             return self.send_error(404)
         return super().do_GET()
+
+    def do_HEAD(self):
+        if not self._public():
+            return self.send_error(404)
+        return super().do_HEAD()
+
+    def _public(self):
+        # translate_path decodes %xx escapes and drops "." and ".." parts, so check the file it resolves to
+        try:
+            parts = Path(self.translate_path(self.path)).relative_to(ROOT).parts
+        except ValueError:
+            return False
+        return not parts or (len(parts) == 1 and parts[0] in PUBLIC_FILES) or (len(parts) > 1 and parts[0] in PUBLIC_DIRS)
 
     def do_POST(self):
         return self._api("POST")
@@ -260,6 +278,11 @@ def share_image(h, conn):
 def share_create(h, conn):
     """Create a link from uploaded photos. The key it returns is needed to stop sharing."""
     return 201, SHARES.create(h.body())
+
+
+@route("GET", "/api/share/status")
+def share_status(h, conn):
+    return 200, {"on": True, "via": "local"}   # same answer shape as the Vercel function
 
 
 @route("GET", r"/api/share/([A-Za-z0-9]{10})")

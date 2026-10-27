@@ -1,0 +1,6 @@
+# Not part of the live site: the Python server (code, tests, local data), the old prototype and the
+# sources of styles.css
+server
+visualizer-v1.html
+tailwind.config.js
+styles.src.css

@@ -17,7 +17,13 @@ AI studio for jewellery businesses: product photo clean-up, try-on photos and a 
 python3 server/app.py
 ```
 
-Then open http://localhost:5173. The server serves the app and the billing API (Python 3.11+, standard library only; `gradio_client` is needed for Show on Model / Mannequin).
+Then open http://localhost:5173. The server serves the app and the billing API (Python 3.11+, standard library only; `gradio_client` is needed for Show on Model / Mannequin). It only hands out the app's own pages and images, never its code, database or other folders.
+
+The pages use `styles.css`, built with Tailwind from the classes in `index.html` and `share.html`. After changing classes, rebuild it:
+
+```bash
+npx tailwindcss@3.4.5 -i styles.src.css -o styles.css --minify
+```
 
 ## Credit policy
 
@@ -65,6 +71,7 @@ Shared catalog links (no account needed; served by `server/app.py` locally and `
 - `POST /api/share` create a link from uploaded photos: returns `{id, key, url}`; the key is needed to stop sharing
 - `GET /api/share/{id}` the link's details, `DELETE /api/share/{id}` with header `X-Share-Key` stops sharing
 - `GET /s/{id}` the client's page (`share.html`, with WhatsApp / social preview tags), `GET /api/share/img/{name}` a photo
+- `GET /api/share/status` whether sharing is switched on (`{"on": true, ...}`)
 
 Payment gateway: `POST /api/webhooks/payment`, header `X-Jewelrex-Signature` = hex HMAC-SHA256 of the raw body. Each event `id` is processed once; renewals grant credits once per `cycle_id`, top-ups once per `payment_id`.
 
@@ -87,7 +94,7 @@ Links made on `localhost` only open on that computer. On the live site, links ar
 2. **Connect** the store to the project for all environments
 3. Redeploy (Deployments → ⋯ → Redeploy), so the new settings reach the site
 
-Until then, Create link shows "Sharing isn't switched on for this site yet". Free (Hobby) limits per month: 1 GB stored, 2,000 uploads (each new photo and each link is one), 10,000 reads (each time a client opens a link is one), 10 GB downloads. If a limit is passed, Vercel pauses Blob for 30 days instead of charging.
+Until then, Create link shows "Sharing isn't switched on for this site yet". To check, open `/api/share/status` on the live site: it says `"on": true` once the store is connected and the site redeployed. `.vercelignore` keeps the Python server and other non-site files out of the deployment. Free (Hobby) limits per month: 1 GB stored, 2,000 uploads (each new photo and each link is one), 10,000 reads (each time a client opens a link is one), 10 GB downloads. If a limit is passed, Vercel pauses Blob for 30 days instead of charging.
 
 ## Tests
 
@@ -99,6 +106,7 @@ Covers successful generation, multi-image requests, failed jobs, top-ups, exhaus
 
 ## Not production-ready yet
 
+- The live site on Vercel has no billing server, so it runs in test mode: credits are free test credits kept in each visitor's browser (anyone can reset them), and AI photos are made by the visitor's browser on the free Hugging Face Space. Selling credits needs `server/app.py` (or an equivalent) deployed with the items below.
 - No sign-in: accounts are identified by a header. Add real authentication before going live.
 - No payment gateway: `DEMO_PAYMENTS` simulates payments. Connect e.g. Razorpay and point its webhook at `/api/webhooks/payment`.
 - Enhance and Blend run in the browser, so their completion is reported by the browser; AI generation is enforced by the server.

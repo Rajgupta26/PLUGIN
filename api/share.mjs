@@ -5,6 +5,7 @@
 //   GET    /api/share/<id>        the link's details
 //   DELETE /api/share/<id>        stop sharing (header X-Share-Key)
 //   GET    /api/share/img/<name>  a photo
+//   GET    /api/share/status      whether a Blob store is connected (no secrets)
 //   GET    /s/<id>                the client's page: share.html with the details and preview tags filled in
 // vercel.json rewrites those paths to this function as ?id=, ?img= and ?page=.
 import { put, get, head, del } from '@vercel/blob';
@@ -25,6 +26,13 @@ const sha256 = (data) => createHash('sha256').update(data).digest('hex');
 const text = (v, n) => String(v ?? '').split(/\s+/).filter(Boolean).join(' ').slice(0, n);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' }[c]));
 const json = (status, body) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
+
+// Connecting a Blob store adds BLOB_STORE_ID and/or BLOB_READ_WRITE_TOKEN. If a custom prefix was chosen when
+// connecting, the names change, so a read-write token or store id is also recognised by its value.
+const env = process.env;
+const token = env.BLOB_READ_WRITE_TOKEN || Object.values(env).find((v) => /^vercel_blob_rw_/.test(v || ''));
+const storeId = env.BLOB_STORE_ID || Object.entries(env).find(([k, v]) => k.endsWith('_STORE_ID') && /^store_/.test(v || ''))?.[1];
+const auth = token ? { token } : storeId ? { storeId } : null;   // passed to every Blob call
 
 // A Blob store is either public or private: use whichever one the connected store accepts
 let access = process.env.JEWELREX_BLOB_ACCESS || null;
@@ -57,8 +65,8 @@ async function saveImage(body) {
   if (!data.length || data.length > MAX_IMAGE_BYTES) throw new ShareError('photo is empty or larger than 3 MB');
   const name = `${sha256(data)}.${imageKind(data)}`, pathname = `shares/img/${name}`;
   // Stored under the hash of its bytes, so a photo that is already there is not uploaded again
-  if (!(await head(pathname).then(() => true, () => false)))
-    await withAccess((a) => put(pathname, data, { access: a, contentType: TYPES[name.split('.')[1]], allowOverwrite: true }));
+  if (!(await head(pathname, auth).then(() => true, () => false)))
+    await withAccess((a) => put(pathname, data, { access: a, contentType: TYPES[name.split('.')[1]], allowOverwrite: true, ...auth }));
   return { name, url: `/api/share/img/${name}` };
 }
 
@@ -82,14 +90,14 @@ async function createShare(body) {
   const share = build(body), key = randomBytes(24).toString('base64url');
   const id = Array.from({ length: 10 }, () => ID_CHARS[randomInt(ID_CHARS.length)]).join('');
   await withAccess((a) => put(`shares/${id}.json`, JSON.stringify({ ...share, keyHash: sha256(key) }),
-    { access: a, contentType: 'application/json', cacheControlMaxAge: 60 }));
+    { access: a, contentType: 'application/json', cacheControlMaxAge: 60, ...auth }));
   return { id, key, url: `/s/${id}` };
 }
 
 async function readShare(id) {
   if (!ID_RX.test(id || '')) return null;
   // Read past the CDN cache so a link stops working as soon as sharing is stopped
-  const r = await withAccess((a) => get(`shares/${id}.json`, { access: a, useCache: false }));
+  const r = await withAccess((a) => get(`shares/${id}.json`, { access: a, useCache: false, ...auth }));
   return r && r.statusCode === 200 ? JSON.parse(await new Response(r.stream).text()) : null;
 }
 
@@ -100,11 +108,11 @@ async function deleteShare(id, key) {
   if (!share) throw new ShareError('this link is no longer shared', 404);
   const a = Buffer.from(sha256(key || '')), b = Buffer.from(String(share.keyHash));
   if (a.length !== b.length || !timingSafeEqual(a, b)) throw new ShareError('only the person who created this link can stop sharing it', 403);
-  await del(`shares/${id}.json`);
+  await del(`shares/${id}.json`, auth);
 }
 
 async function shareImage(name) {
-  const r = IMAGE_RX.test(name) ? await withAccess((a) => get(`shares/img/${name}`, { access: a })) : null;
+  const r = IMAGE_RX.test(name) ? await withAccess((a) => get(`shares/img/${name}`, { access: a, ...auth })) : null;
   if (!r || r.statusCode !== 200) return new Response('Not found', { status: 404 });
   // Photos are stored under the hash of their bytes, so they never change
   return new Response(r.stream, { headers: { 'Content-Type': TYPES[name.split('.')[1]], 'X-Content-Type-Options': 'nosniff',
@@ -148,10 +156,11 @@ export default {
     const page = q.get('page') ?? url.pathname.match(/^\/s\/([^/]+)$/)?.[1];
     const img = q.get('img') ?? url.pathname.match(/^\/api\/share\/img\/([^/]+)$/)?.[1];
     const id = q.get('id') ?? url.pathname.match(/^\/api\/share\/([^/]+)$/)?.[1];
-    const on = Boolean(process.env.BLOB_STORE_ID || process.env.BLOB_READ_WRITE_TOKEN);
+    const on = Boolean(auth);
     try {
       if (method === 'GET' && page != null) return await sharePage(url.origin, page, on);
-      if (!on) return json(503, { error: 'sharing_off', message: 'Sharing is not switched on yet: connect a Vercel Blob store to this project.' });
+      if (method === 'GET' && id === 'status') return json(200, { on, via: token ? 'token' : storeId ? 'oidc' : null });
+      if (!on) return json(503, { error: 'sharing_off', message: 'Sharing is not switched on yet: no Vercel Blob store is connected to this deployment. Connect one in the project\'s Storage tab, then redeploy.' });
       if (method === 'GET' && img != null) return await shareImage(img);
       if (method === 'POST' && id === 'image') return json(201, await saveImage(await request.json()));
       if (method === 'POST' && id == null) return json(201, await createShare(await request.json()));
