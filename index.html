@@ -304,13 +304,15 @@ const FRAME = 'w=1200&h=1500&fit=crop&q=85';
 // Model photos for Show on Model. Maya and Meera are the client's own jewellery-free photos (models/ folder).
 // focus: for small pieces the AI works on a square close-up of this spot (centre cx/cy as fractions of the
 // photo, size w as a fraction of its width), which is then blended back into the full photo.
+// Earrings use view instead: a head-and-shoulders portrait (left x, top y, width w as fractions, 4:5), so the whole
+// face shows while the earring keeps the photo's full sharpness; cx/cy mark the earlobe.
 const MODELS = [
   { id: 'maya', name: 'Maya', src: 'models/maya.jpg', group: 'model', types: ['necklace', 'earrings'],
-    focus: { earrings: { cx: .29, cy: .33, w: .42 }, necklace: { top: .50 } } },
+    focus: { earrings: { cx: .29, cy: .33, view: { x: .06, y: 0, w: .72 } }, necklace: { top: .50 } } },
   { id: 'meera', name: 'Meera', src: 'models/meera.jpg', group: 'model', types: ['necklace', 'earrings'],
-    focus: { earrings: { cx: .70, cy: .41, w: .42 }, necklace: { top: .60 } } },
+    focus: { earrings: { cx: .70, cy: .41, view: { x: .15, y: .02, w: .72 } }, necklace: { top: .60 } } },
   { id: 'zara', name: 'Zara', src: 'models/zara.jpg', group: 'model', types: ['necklace', 'earrings'],
-    focus: { earrings: { cx: .58, cy: .47, w: .42 }, necklace: { top: .63 } } },
+    focus: { earrings: { cx: .58, cy: .47, view: { x: .03, y: .12, w: .72 } }, necklace: { top: .63 } } },
   { id: 'wrist-aria', name: 'Aria', src: 'models/wrist-aria.jpg', group: 'model', types: ['bracelet'] },
   { id: 'hand', name: 'Hand', src: U('photo-1617069897015-7d27a76232ed', FRAME), group: 'model', types: ['ring', 'bracelet'],
     focus: { ring: { cx: .53, cy: .46, w: .55 } } },
@@ -682,7 +684,8 @@ function aiPrompt(type, metal, group) {
   const keep = (what) => `Keep the jewellery design exactly identical to image 2: same shape, stones and metal colour. Keep ${what} exactly the same as image 1, with the same framing. ` +
     `Realistic size, perspective, shadows and reflections where the jewellery touches the skin. Photorealistic high-end jewellery catalogue photo.`;
   return {
-    earrings: `Image 1 is a close-up of a woman's ear. Add the earring from image 2${m} to her earlobe: it hangs from the earlobe through the piercing, at the real size of an earring. ` + keep('her ear, hair, skin, face and background'),
+    earrings: `Image 1 is a head-and-shoulders portrait of a woman. Add the earring from image 2${m} to her visible ear: it is worn on her earlobe through the piercing (a stud sits on the earlobe, a drop hangs below it), at the real size of an earring, small next to her face. ` +
+      `Keep exactly the same framing, camera distance and composition as image 1: her whole face must stay fully visible; do not zoom in, zoom out or crop. ` + keep('her face, ear, hair, skin, clothes and background'),
     ring: `Image 1 is a close-up of a woman's hand. Put the ring from image 2${m} on her ring finger: the band wraps around the finger near its base, seen in correct perspective, at the real size of a ring. ` + keep('the hand, fingers, nails, skin and background'),
     bracelet: `Image 1 shows a woman's hand and wrist. Put the bracelet from image 2${m} around her wrist, just below the hand where the wrist is narrowest: it wraps all the way around the wrist following its curve, sits flat against the skin, and its front faces the camera. Real size of a bracelet. ` +
       `Keep the hand, fingers, wrist and arm exactly the same shape, size, pose and position as image 1; do not change or redraw the hand. ` + keep('the skin, clothes and background'),
@@ -719,6 +722,10 @@ function focusRect(model, type, im) {
   const f = model.focus && model.focus[type]; if (!f) return null;
   const W = im.naturalWidth, H = im.naturalHeight;
   if (f.top != null) return null;
+  if (f.view) {   // head-and-shoulders portrait, 4:5, kept inside the photo
+    const w = Math.round(Math.min(f.view.w * W, W, H * .8)), h = Math.round(w * 1.25);
+    return { x: Math.round(Math.min(f.view.x * W, W - w)), y: Math.round(Math.min(f.view.y * H, H - h)), w, h };
+  }
   const side = Math.round(Math.min(f.w * W, W, H));
   const x = Math.round(Math.min(Math.max(f.cx * W - side / 2, 0), W - side));
   const y = Math.round(Math.min(Math.max(f.cy * H - side / 2, 0), H - side));
@@ -775,6 +782,35 @@ async function blendBack(im, r, outSrc) {
   return full.toDataURL('image/jpeg', .93);
 }
 
+// Earrings: the result is the head-and-shoulders portrait. If the AI kept its framing, only a soft-edged area
+// around the ear (and below it, where an earring hangs) comes from the AI photo, colour-matched, so her face stays
+// exactly as in the original. If it re-framed anyway, its photo is used as it is.
+async function blendEar(im, r, outSrc, ear) {
+  const out = await loadImg(outSrc), w = r.w, h = r.h;
+  const ai = canvasOf(w, h), ax = ai.getContext('2d', { willReadFrequently: true });
+  ax.drawImage(out, 0, 0, w, h);
+  const orig = canvasOf(w, h), ox = orig.getContext('2d', { willReadFrequently: true });
+  ox.drawImage(im, r.x, r.y, w, h, 0, 0, w, h);
+  if (shotChanged(ai, orig)) return null;
+  const ex = ear.cx * im.naturalWidth - r.x, ey = ear.cy * im.naturalHeight - r.y, rx = w * .2, ry = h * .22;
+  // Colour drift, measured away from the ear where nothing should change
+  const ad = ax.getImageData(0, 0, w, h), d = ad.data, od = ox.getImageData(0, 0, w, h).data, sumA = [0, 0, 0], sumO = [0, 0, 0];
+  for (let y = 0; y < h; y += 3) for (let x = 0; x < w; x += 3) {
+    if (((x - ex) / (rx * 1.6)) ** 2 + ((y - ey - ry * .3) / (ry * 1.6)) ** 2 < 1) continue;
+    const i = (y * w + x) * 4;
+    for (let k = 0; k < 3; k++) { sumA[k] += d[i + k]; sumO[k] += od[i + k]; }
+  }
+  const gain = sumA.map((v, k) => Math.min(1.15, Math.max(.87, sumO[k] / Math.max(1, v))));
+  for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) d[i + k] = Math.min(255, d[i + k] * gain[k]);
+  ax.putImageData(ad, 0, 0);
+  const f = Math.round(Math.min(w, h) * .05), mask = canvasOf(w, h), mx = mask.getContext('2d');
+  mx.filter = `blur(${f}px)`; mx.fillStyle = '#000';
+  mx.beginPath(); mx.ellipse(ex, ey + ry * .3, rx, ry, 0, 0, Math.PI * 2); mx.fill();
+  ax.globalCompositeOperation = 'destination-in'; ax.drawImage(mask, 0, 0);
+  ox.drawImage(ai, 0, 0);
+  return orig.toDataURL('image/jpeg', .93);
+}
+
 // Necklaces: if the AI kept the photo's framing, take only the part below the chin from its result and keep
 // the original face and hair. If it zoomed or re-framed anyway, its photo is used as it is.
 async function keepFace(im, top, outSrc) {
@@ -811,8 +847,9 @@ async function generateOnModel(up) {
   } catch (e) { if (e.data && e.data.account) setAccount(e.data.account); throw e; }
   if (res.account) setAccount(res.account);
   const out = res.image;
-  const chin = model.focus && model.focus[state.type] && model.focus[state.type].top;
-  const photo = (rect && await blendBack(im, rect, out)) || (chin != null && await keepFace(im, chin, out)) || out;
+  const f = model.focus && model.focus[state.type], chin = f && f.top;
+  const photo = f && f.view ? (await blendEar(im, rect, out, f)) || out   // earrings: the portrait itself
+    : (rect && await blendBack(im, rect, out)) || (chin != null && await keepFace(im, chin, out)) || out;
   return { photo, photoImg: await loadImg(photo), model, secs: Math.round((Date.now() - t0) / 1000) };
 }
 
@@ -1146,8 +1183,8 @@ function wireActions(key) {
   host.querySelector('.act-add').addEventListener('click', () => {
     if (state.added[key]) { state.tab = 'catalog'; return render(); }
     const c = resultCanvas(key); if (!c) return;
-    const t = canvasOf(Math.round(c.width * .8), Math.round(c.height * .8)); t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
-    const item = { id: 'c' + Date.now(), img: t.toDataURL('image/jpeg', .86), ...resultInfo(key), time: Date.now() };
+    // Full size, so details such as an earring stay sharp when the photo is zoomed in
+    const item = { id: 'c' + Date.now(), img: c.toDataURL('image/jpeg', .9), ...resultInfo(key), time: Date.now() };
     state.catalog.unshift(item); saveCatalogItem(item);
     state.added[key] = true; render(); toast('Added to Catalog');
   });
