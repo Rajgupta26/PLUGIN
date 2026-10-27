@@ -79,22 +79,8 @@
   .checker { background-color: #fff; background-image: linear-gradient(45deg,#f3eee5 25%,transparent 25%),linear-gradient(-45deg,#f3eee5 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f3eee5 75%),linear-gradient(-45deg,transparent 75%,#f3eee5 75%); background-size: 16px 16px; background-position: 0 0,0 8px,8px -8px,-8px 0; }
   #stage { touch-action: none; }
   input[type=range] { accent-color: #C8A152; }
-  /* Processing animation: orbiting gold ring around a glinting gem (no text) */
-  .gem-loader { position: relative; width: 112px; height: 112px; }
-  .gem-loader .orbit { position: absolute; inset: 0; border-radius: 50%; border: 2px solid rgba(200,161,82,.18); border-top-color: #C8A152; border-right-color: #E6CE93; animation: spin 1.4s cubic-bezier(.6,.1,.4,.9) infinite; }
-  .gem-loader .orbit.two { inset: 14px; border-width: 1.5px; border-top-color: transparent; border-bottom-color: #A9843B; animation-duration: 2.2s; animation-direction: reverse; }
-  .gem-loader .spark { position: absolute; left: 50%; top: -3px; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%; background: #E6CE93; box-shadow: 0 0 10px 3px rgba(230,206,147,.9); }
-  .gem-loader .spin-wrap { position: absolute; inset: 0; animation: spin 2.8s linear infinite; }
-  .gem-loader svg { position: absolute; inset: 30px; animation: gem 2.2s ease-in-out infinite; filter: drop-shadow(0 6px 10px rgba(169,132,59,.35)); }
-  .gem-loader .glint { position: absolute; inset: 30px; overflow: hidden; clip-path: polygon(50% 0, 100% 35%, 50% 100%, 0 35%); }
-  .gem-loader .glint::after { content: ''; position: absolute; top: -20%; bottom: -20%; width: 35%; left: -60%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.85), transparent); animation: glint 2.2s ease-in-out infinite; }
-  .load-track { width: 140px; height: 3px; border-radius: 9px; background: #EADEC9; overflow: hidden; }
-  .load-track::after { content: ''; display: block; height: 100%; width: 40%; border-radius: 9px; background: linear-gradient(90deg, #C8A152, #E6CE93, #C8A152); animation: track 1.6s ease-in-out infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes gem { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-4px) scale(1.04); } }
-  @keyframes glint { 0%, 35% { left: -60%; } 75%, 100% { left: 130%; } }
-  @keyframes track { from { transform: translateX(-110%); } to { transform: translateX(260%); } }
-  @media (prefers-reduced-motion: reduce) { .gem-loader *, .gem-loader *::after, .load-track::after { animation-duration: 6s !important; } }
+  /* Processing animation: a canvas of dots that fills the box (drawn by startDots, no text) */
+  .dot-loader, .dot-loader canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 </style>
 </head>
 <body class="font-sans text-ink antialiased">
@@ -877,19 +863,151 @@ function drawEnhanced(cut, metal) {
   return c;
 }
 
-/* ============ UI helpers ============ */
-const GEM_LOADER = `<div class="gem-loader" role="status" aria-label="Processing">
-  <div class="orbit"></div><div class="orbit two"></div><div class="spin-wrap"><span class="spark"></span></div>
-  <svg viewBox="0 0 52 52"><defs><linearGradient id="gemg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#E6CE93"/><stop offset=".5" stop-color="#C8A152"/><stop offset="1" stop-color="#A9843B"/></linearGradient></defs>
-    <path d="M26 2 50 18 26 50 2 18Z" fill="url(#gemg)"/><path d="M2 18h48M14 18 26 2l12 16M14 18l12 32 12-32" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="1"/></svg>
-  <div class="glint"></div></div>`;
+/* ============ Processing animation ============ */
+// A field of fine dots fills the box while an image is being made: gold ripples pass through it and a diamond
+// forms out of the dots from top to bottom, catches the light, sparkles and dissolves again, in a loop.
+// Drawn on a canvas; the loop stops by itself once the result replaces the loader.
+const DOT_LOADER = '<div class="dot-loader" role="status" aria-label="Processing"><canvas></canvas></div>';
+const GEM_OUTLINE = [[-.28, -.4], [.28, -.4], [.5, -.12], [0, .45], [-.5, -.12]];   // in gem widths, centred, y down
+const GEM_EDGES = [...GEM_OUTLINE.map((p, i) => [p, GEM_OUTLINE[(i + 1) % 5]]), [[-.5, -.12], [.5, -.12]]];  // outline + girdle
+const GEM_TONES = [[242, 228, 192], [230, 206, 147], [200, 161, 82], [169, 132, 59]];   // pale, light, gold, deep
+const FACET_TONE = [1, 2, 1, 2, 3, 2, 1, 3];   // 5 crown facets left to right, then 3 pavilion facets: lit from the top left
+const clamp01 = (k) => k < 0 ? 0 : k > 1 ? 1 : k;
+const smooth = (k) => (k = clamp01(k), k * k * (3 - 2 * k));
+const easeIO = (k) => (k = clamp01(k), k < .5 ? 4 * k * k * k : 1 - (2 - 2 * k) ** 3 / 2);
+const hash = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+let dotGlow = null;
 
-function loaderHTML() {
-  return `<div class="shimmer absolute inset-0"></div><div class="relative grid h-full place-items-center p-6"><div class="grid place-items-center gap-6">${GEM_LOADER}<div class="load-track"></div></div></div>`;
+function gemFacet(u, v) {
+  if (v < -.12) { const s = (v + .4) / .28; return u < -.28 + .12 * s ? 0 : u < -.16 * s ? 1 : u < .16 * s ? 2 : u < .28 - .12 * s ? 3 : 4; }
+  const r = 1 - (v + .12) / .57; return u < -.16 * r ? 5 : u < .16 * r ? 6 : 7;
 }
+function gemEdgeDist(u, v) {
+  let m = 9;
+  for (const [[ax, ay], [bx, by]] of GEM_EDGES) {
+    const dx = bx - ax, dy = by - ay, k = clamp01(((u - ax) * dx + (v - ay) * dy) / (dx * dx + dy * dy));
+    m = Math.min(m, Math.hypot(u - ax - k * dx, v - ay - k * dy));
+  }
+  return m;
+}
+const inGem = (u, v) => GEM_OUTLINE.every(([ax, ay], i) => { const [bx, by] = GEM_OUTLINE[(i + 1) % 5]; return (bx - ax) * (v - ay) - (by - ay) * (u - ax) >= 0; });
+
+function startDots(el) {
+  if (!el) return;
+  const cv = el.firstElementChild, x = cv.getContext('2d'), calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const BASE = [214, 199, 170], GOLD = [200, 161, 82], WHITE = [255, 252, 244];
+  const CYCLE = 4.6, BUILD = 1.4, HOLD = 3.4;   // seconds: the gem forms, holds, then dissolves until ~4.2
+  let w = 0, h = 0, sp = 0, gw = 0, gx = 0, gy = 0, far = 1, dots = [], inner = [];
+  if (!dotGlow) {
+    dotGlow = canvasOf(64, 64); const g = dotGlow.getContext('2d'), r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    r.addColorStop(0, 'rgba(255,250,236,1)'); r.addColorStop(.3, 'rgba(230,206,147,.6)'); r.addColorStop(1, 'rgba(230,206,147,0)');
+    g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+  }
+
+  function layout() {
+    w = cv.clientWidth; h = cv.clientHeight; if (!w || !h) return;
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    sp = Math.max(7, Math.min(15, Math.min(w, h) / 40));
+    gw = Math.min(w * .42, h * .62); gx = w / 2; gy = h / 2 - gw * .025;
+    const cols = Math.floor(w / sp), rows = Math.floor(h / sp), ox = (w - (cols - 1) * sp) / 2, oy = (h - (rows - 1) * sp) / 2;
+    far = Math.hypot(w, h) / 2; dots = []; inner = [];
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+      const px = ox + i * sp, py = oy + j * sp, u = (px - gx) / gw, v = (py - gy) / gw, dist = Math.hypot(px - gx, py - gy);
+      const d = { x: px, y: py, dist, vig: 1 - .5 * (dist / far) ** 2, ph: i * .33 + j * .21 + Math.random() * .9,
+                  tw: Math.random() < .08 ? Math.random() * 6.283 : -1, hf: clamp01(1 - Math.abs(px - gx) / (w * .5)) ** 1.5 };
+      const e = gemEdgeDist(u, v) * gw;
+      if (inGem(u, v) || e < sp * .56) {
+        Object.assign(d, { gem: true, edge: e < sp * .56, facet: gemFacet(u, v), v: (v + .4) / .85, j: Math.random(), diag: (u + .5 + (v + .4) / .85) / 2 });
+        if (!d.edge) inner.push(d);
+      }
+      dots.push(d);
+    }
+  }
+
+  function sparkle(px, py, s, p) {
+    x.save(); x.translate(px, py); x.rotate(p * .9);
+    x.drawImage(dotGlow, -s * 1.4, -s * 1.4, s * 2.8, s * 2.8);
+    x.fillStyle = '#fff'; x.strokeStyle = 'rgba(169,132,59,.7)'; x.lineWidth = .8; x.beginPath();
+    for (let i = 0; i < 8; i++) { const r = i % 2 ? s * .18 : s, an = i * Math.PI / 4; x.lineTo(Math.cos(an) * r, Math.sin(an) * r); }
+    x.closePath(); x.fill(); x.stroke(); x.restore();
+  }
+
+  function draw(t) {
+    const tc = t % CYCLE, cyc = Math.floor(t / CYCLE);
+    x.clearRect(0, 0, w, h);
+    // How far the gem has formed (0 = table, 1 = point), and how much of it is there
+    const front = -.2 + 1.45 * easeIO(tc / BUILD);
+    const presence = tc < BUILD ? easeIO(tc / BUILD) : tc < HOLD ? 1 : 1 - clamp01((tc - HOLD) / .8);
+    if (presence > 0) {   // warm light behind the gem
+      const g = x.createRadialGradient(gx, gy, 0, gx, gy, gw * .9);
+      g.addColorStop(0, `rgba(230,206,147,${.3 * presence})`); g.addColorStop(1, 'rgba(230,206,147,0)');
+      x.fillStyle = g; x.fillRect(0, 0, w, h);
+    }
+    // Ripples leave the gem as it completes and again half a cycle later: [radius, strength, …]
+    const rings = [], P = CYCLE / 2, L = 2.6, wid = sp * 2.2;
+    if (!calm) for (let k = Math.ceil((t - BUILD - L) / P); k <= Math.floor((t - BUILD) / P); k++) {
+      const p = (t - BUILD - k * P) / L;
+      rings.push(gw * .3 + p * (far + wid * 2 - gw * .3), (1 - p) ** 1.4 * smooth(p / .06) * .9);
+    }
+    const band = tc < BUILD ? Math.sin(Math.PI * tc / BUILD) * .5 : 0, yFront = gy + gw * (-.4 + front * .85);   // scan line while forming
+    const gp = tc > 1.75 && tc < 2.75 ? -.25 + 1.5 * easeIO(tc - 1.75) : null;   // glint sweeping across the gem
+
+    const groups = new Map();
+    for (const d of dots) {
+      const b = .5 + .5 * Math.sin(t * 1.4 + d.ph);   // slow breathing shimmer
+      let lift = 0;
+      for (let i = 0; i < rings.length; i += 2) { const k = (d.dist - rings[i]) / wid; lift += rings[i + 1] * Math.exp(-k * k); }
+      if (band) { const k = (d.y - yFront) / (sp * 1.3); lift += band * d.hf * Math.exp(-k * k); }
+      if (d.tw >= 0 && !calm) lift += Math.max(0, Math.sin(t * .9 + d.tw)) ** 40;
+      lift = Math.min(1, lift);
+      let r = BASE[0] + (GOLD[0] - BASE[0]) * lift, g = BASE[1] + (GOLD[1] - BASE[1]) * lift, bl = BASE[2] + (GOLD[2] - BASE[2]) * lift;
+      let al = Math.min(1, d.vig * (.45 + .25 * b) + lift * .6), rad = sp * (.095 + .03 * b + .13 * lift);
+      if (d.gem) {
+        let a, flash;
+        if (tc < HOLD) { a = smooth((front - d.v - d.j * .12) / .14); flash = a * (1 - a) * 2.4; }   // pops in as the front passes
+        else { const q = clamp01((tc - HOLD - d.j * .42) / .38); a = 1 - smooth(q); flash = Math.sin(Math.PI * q) * .7; }
+        if (a > 0) {
+          const T = GEM_TONES[d.edge ? 3 : FACET_TONE[d.facet]], P0 = GEM_TONES[0];
+          const play = d.edge ? 0 : .3 * (.5 + .5 * Math.sin(t * 1.7 + d.facet * 2.3));   // facets catch the light in turn
+          const gl = gp === null ? 0 : Math.exp(-(((d.diag - gp) / .06) ** 2)), lit = Math.min(1, flash * .6 + gl * (d.edge ? .45 : .8));
+          const tr = T[0] + (P0[0] - T[0]) * play, tg = T[1] + (P0[1] - T[1]) * play, tb = T[2] + (P0[2] - T[2]) * play;
+          r += (tr + (WHITE[0] - tr) * lit - r) * a; g += (tg + (WHITE[1] - tg) * lit - g) * a; bl += (tb + (WHITE[2] - tb) * lit - bl) * a;
+          al += (1 - al) * a;
+          rad += (sp * (d.edge ? .3 : .25) * (1 + flash * .5 + gl * .25) - rad) * a;
+        }
+      }
+      // Batch dots of the same colour into one path
+      const key = (r >> 3) << 14 | (g >> 3) << 9 | (bl >> 3) << 4 | Math.round(al * 15);
+      let list = groups.get(key); if (!list) groups.set(key, list = []);
+      list.push(d.x, d.y, rad);
+    }
+    for (const [key, list] of groups) {
+      x.fillStyle = `rgba(${(key >> 14) << 3 | 4},${(key >> 9 & 31) << 3 | 4},${(key >> 4 & 31) << 3 | 4},${(key & 15) / 15})`;
+      x.beginPath();
+      for (let i = 0; i < list.length; i += 3) { x.moveTo(list[i] + list[i + 2], list[i + 1]); x.arc(list[i], list[i + 1], list[i + 2], 0, 6.2832); }
+      x.fill();
+    }
+    // A few sparkles inside the finished gem
+    if (!calm && inner.length) for (let i = 0; i < 4; i++) {
+      const p = (tc - 1.5 - i * .45 - hash(cyc * 7 + i) * .2) / .7;
+      if (p > 0 && p < 1) { const d = inner[hash(cyc * 13 + i * 5) * inner.length | 0]; sparkle(d.x, d.y, sp * 1.5 * Math.sin(Math.PI * p), p); }
+    }
+  }
+
+  const t0 = performance.now();
+  (function frame(now) {
+    if (!el.isConnected) return;   // the result replaced the loader: stop
+    requestAnimationFrame(frame);
+    if (cv.clientWidth !== w || cv.clientHeight !== h) layout();
+    if (w && h) draw(Math.max(0, now - t0) / 1000 * (calm ? .45 : 1));
+  })(t0);
+}
+
+/* ============ UI helpers ============ */
 // Show the loader while `work` runs (at least ~2 s so it reads as processing)
 async function withLoader(box, kind, work) {
-  box.innerHTML = loaderHTML(kind);
+  box.innerHTML = DOT_LOADER; startDots(box.firstElementChild);
   const [r] = await Promise.all([work(), wait(1900)]);
   return r;
 }
@@ -1179,8 +1297,9 @@ function renderSearch() {
   if (s.status === 'loading') {
     out.innerHTML = `<div class="grid gap-5 md:grid-cols-[220px_1fr]">
       <div class="relative aspect-square overflow-hidden rounded-xl border border-line"><img src="${up.img}" class="h-full w-full object-cover"/><div class="scan-line"></div></div>
-      <div class="grid content-center gap-3"><div class="grid place-items-center py-2">${GEM_LOADER}</div>
+      <div class="grid content-center gap-3"><div class="relative h-32 overflow-hidden rounded-xl bg-ivory">${DOT_LOADER}</div>
       ${[1, 2, 3, 4].map(() => `<div class="shimmer h-14 rounded-xl"></div>`).join('')}</div></div>`;
+    startDots(out.querySelector('.dot-loader'));
     return;
   }
   if (s.status !== 'done') { out.innerHTML = `<div class="aspect-[16/7]">${empty(up ? 'Ready to search' : 'Upload a reference photo', 'We will look through every piece in stock')}</div>`; return; }
