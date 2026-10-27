@@ -65,6 +65,18 @@ function waNumber(p) {
   else if (d.length === 11 && d[0] === '0') d = '91' + d.slice(1);
   return d.length >= 11 ? d : '';
 }
+// Links made by earlier versions can carry file-name codes as names ("IMG_2034.jpg", "55D6PMNKMAA26_1.webp",
+// long ids): show those as "<type> <n>" (or "Design <n>") instead
+function tidyNames() {
+  share.items.forEach((it, i) => {
+    const name = String(it.title || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[_\-.+]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const words = name.split(' ').filter(Boolean);
+    const code = (name.match(/[a-z]/gi) || []).length < 3 || /\d{4,}/.test(name)
+      || /^(img|dsc|dscn|pxl|photo|image|images|pic|whatsapp|screenshot|screen shot|signal|pexels|unsplash|download|untitled|file|scan)\b/i.test(name)
+      || words.some(w => /^[a-f0-9]{8,}$/i.test(w) || (w.length >= 8 && /\d/.test(w) && /[a-z]/i.test(w)));
+    if (code) it.title = `${it.kind || 'Design'} ${i + 1}`;
+  });
+}
 const pageUrl = () => location.href.split('#')[0];
 function enquireUrl(it) {
   const hi = `Hi${share.business ? ' ' + share.business : ''}, I'm interested in ` +
@@ -90,7 +102,7 @@ function card(it, i) {
     </div>
     <div class="px-1 pt-3">
       ${tag ? `<div class="font-mono text-[10px] uppercase tracking-wider text-gold-deep">${tag}</div>` : ''}
-      <div class="font-serif text-[15px] leading-snug sm:text-lg">${esc(it.title)}</div>
+      <div class="break-words font-serif text-[15px] leading-snug sm:text-lg">${esc(it.title)}</div>
       ${chips ? `<div class="mt-2 flex flex-wrap gap-1.5 text-[11px] text-ink/70">${chips}</div>` : ''}
     </div></button>`;
 }
@@ -115,7 +127,7 @@ function render() {
   $('app').innerHTML = `
     <header class="mx-auto max-w-6xl px-5 pb-8 pt-12 sm:px-8 sm:pt-16">
       <div class="rise flex items-center gap-3"><span class="h-px w-8 bg-gold"></span><p class="font-mono text-[11px] tracking-[.22em] text-gold-deep">${share.business ? esc(share.business.toUpperCase()) : 'JEWELLERY CATALOG'}</p></div>
-      <h1 class="rise mt-4 max-w-3xl font-serif text-4xl leading-[1.08] sm:text-6xl" style="animation-delay:80ms">${esc(share.title)}</h1>
+      <h1 class="rise mt-4 max-w-3xl break-words font-serif text-4xl leading-[1.08] sm:text-6xl" style="animation-delay:80ms">${esc(share.title)}</h1>
       <p class="rise mt-4 text-sm text-ink/55" style="animation-delay:140ms">${n} piece${n === 1 ? '' : 's'} · Shared ${esc(when)}</p>
       ${share.note ? `<p class="rise mt-6 max-w-2xl border-l-2 border-gold pl-4 font-serif text-lg italic leading-relaxed text-ink/80" style="animation-delay:200ms">${esc(share.note)}</p>` : ''}
     </header>
@@ -134,7 +146,7 @@ function show(i) {
   $('vCount').textContent = `${current + 1} / ${share.items.length}`;
   $('vInfo').innerHTML = `
     ${[it.sku, it.kind].filter(Boolean).length ? `<div class="font-mono text-[11px] uppercase tracking-wider text-gold-deep">${[it.sku, it.kind].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
-    <h2 class="mt-1 font-serif text-3xl leading-tight">${esc(it.title)}</h2>
+    <h2 class="mt-1 break-words font-serif text-3xl leading-tight">${esc(it.title)}</h2>
     ${it.details.length ? `<dl class="mt-5 grid grid-cols-2 gap-2">${it.details.map(([k, v]) => `<div class="rounded-xl border border-line bg-white px-3 py-2"><dt class="font-mono text-[9px] uppercase tracking-[.15em] text-ink/50">${esc(k)}</dt><dd class="text-sm font-semibold">${esc(v)}</dd></div>`).join('')}</dl>` : ''}
     ${wa ? `<a href="${esc(enquireUrl(it))}" target="_blank" rel="noopener" class="mt-6 flex items-center justify-center gap-2 rounded-xl bg-[#1FA855] px-4 py-3 text-sm font-medium text-white hover:bg-[#178F47]">${WA_ICON} Enquire about this piece</a>` : ''}`;
   const one = share.items.length < 2;
@@ -177,7 +189,7 @@ $('viewer').addEventListener('touchend', e => {
 });
 addEventListener('resize', layout);
 
-load().then(s => { share = s; if (share && share.items && share.items.length) render(); else missing(); });
+load().then(s => { share = s; if (share && share.items && share.items.length) { tidyNames(); render(); } else missing(); });
 </script>
 </body>
 </html>
