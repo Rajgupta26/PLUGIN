@@ -676,22 +676,22 @@ async function toDataURL(src, max = 1024) {
 }
 
 // earring: 'stud' or 'drop' (see earringStyle), so the AI wears it the right way instead of guessing
+const copyNecklace = `Copy the necklace from image 2 exactly, as a faithful copy of the same piece: the same outline, width, number of rows, pattern, stone count, stone shapes, spacing and metal colour. Do not simplify, thin out or redesign it. Do not add, remove or change any part of it: if image 2 has no pendant, chain or drop, do not add one. `;
 function aiPrompt(type, metal, group, earring) {
   const m = metal && metal !== 'original' ? ` in ${METALS.find(x => x[0] === metal)[1].toLowerCase()}` : '';
   if (group === 'mannequin') {
     const keepM = `Keep the jewellery design exactly identical to image 2: same shape, stones, metal colour and size. Keep the display, its colour, the background and the lighting exactly the same as image 1, with exactly the same framing and camera distance; do not zoom in, zoom out or crop. Realistic contact shadows and reflections. Photorealistic high-end jewellery shop display photo.`;
     return {
-      necklace: `Image 1 is a jewellery display bust. Place the necklace from image 2${m} on the bust: the chain goes around the neck of the bust and drapes naturally over its chest, centred, with the pendant resting at the front. ` + keepM,
+      necklace: `Image 1 is a jewellery display bust. Place the necklace from image 2${m} on the bust, around its neck and resting naturally on its chest, centred, worn the way it is designed to be worn, at its real size. ` + copyNecklace + keepM,
       earrings: `Image 1 is an earring display stand. Hang the pair of earrings from image 2${m} on the stand, one earring hanging from the end of each arm (from the ring or tip at the end of the arm), hanging straight down. ` + keepM,
       ring: `Image 1 is a display mannequin hand. Put the ring from image 2${m} on the ring finger of the mannequin hand, the band wrapping around the finger near its base, in correct perspective. ` + keepM,
       bracelet: `Image 1 is a display mannequin hand. Put the bracelet from image 2${m} around the wrist of the mannequin hand, wrapping around it and sitting naturally. ` + keepM,
     }[type];
   }
   if (type === 'necklace')
-    return `Make the person in image 1 wear the necklace from image 2${m} around her neck: the chain goes around the back of her neck and drapes naturally over her collarbones, with the pendant resting on her chest. ` +
+    return `Make the person in image 1 wear the necklace from image 2${m} around her neck, resting naturally on her collarbones and chest, worn the way it is designed to be worn, at its real size. ` + copyNecklace +
       `Keep exactly the same framing, camera distance and composition as image 1: her whole head and face must stay fully visible; do not zoom in, zoom out or crop. ` +
-      `Keep the jewellery design exactly identical to image 2: same shape, stones, metal colour and chain thickness. ` +
-      `Keep her face, hair, skin, clothes, pose, background and lighting exactly the same as image 1. Realistic shadows and reflections where the jewellery touches the skin. Photorealistic high-end jewellery catalogue photo.`;
+            `Keep her face, hair, skin, clothes, pose, background and lighting exactly the same as image 1. Realistic shadows and reflections where the jewellery touches the skin. Photorealistic high-end jewellery catalogue photo.`;
   const keep = (what) => `Keep the jewellery design exactly identical to image 2: same shape, stones and metal colour. Keep ${what} exactly the same as image 1, with the same framing. ` +
     `Realistic size, perspective, shadows and reflections where the jewellery touches the skin. Photorealistic high-end jewellery catalogue photo.`;
   return {
@@ -1548,12 +1548,12 @@ function renderCatalog() {
         <span class="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 font-mono text-[10px] tracking-wider">${esc(c.kind.toUpperCase())}</span>
         <button data-cat-share="${c.id}" class="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/90 text-ink/70 shadow-sm hover:bg-white hover:text-ink" title="Share as a link" aria-label="Share ${esc(c.title)} as a link">${LINK_ICON}</button></div>
       <div class="p-4">
-        ${(c.info ? c.info.design : c.inv && c.inv.sku) ? `<div class="font-mono text-[10px] text-gold-deep">${esc(c.info ? c.info.design : c.inv.sku)}</div>` : ''}
+        ${(c.info ? c.info.design : c.inv && c.inv.sku) ? `<div class="font-mono text-[10px] text-gold-deep">DESIGN NO. ${esc(c.info ? c.info.design : c.inv.sku)}</div>` : ''}
         <div class="flex items-start gap-1"><div data-title="${c.id}" class="min-w-0 flex-1 break-words font-serif text-lg leading-snug">${esc(c.title)}</div>
           <button data-cat-rename="${c.id}" class="-mr-1 shrink-0 rounded-md p-1 text-ink/40 hover:bg-ivory hover:text-ink" title="Edit details" aria-label="Edit details of ${esc(c.title)}">
             <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></div>
         ${c.sub ? `<div class="text-xs text-ink/50">${esc(c.sub)}</div>` : ''}
-        ${pieceDetails(c).filter(([l]) => l !== 'Design number').length ? `<div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">${pieceDetails(c).filter(([l]) => l !== 'Design number').map(([l, v]) => `<span class="rounded-full bg-ivory px-2 py-0.5" title="${esc(l)}">${esc(v)}</span>`).join('')}</div>` : ''}
+        ${pieceDetails(c).filter(([l]) => l !== 'Design number').length ? `<dl class="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">${pieceDetails(c).filter(([l]) => l !== 'Design number').map(([l, v]) => `<div class="min-w-0 rounded-lg bg-ivory px-2.5 py-1.5"><dt class="font-mono text-[9px] uppercase tracking-[.15em] text-ink/50">${esc(l)}</dt><dd class="truncate text-sm font-semibold" title="${esc(v)}">${esc(v)}</dd></div>`).join('')}</dl>` : ''}
         <div class="mt-3 grid grid-cols-3 gap-1.5">
           <a href="${c.img}" download="jewelrex-${c.id}.jpg" class="rounded-lg border border-line px-2 py-1.5 text-center text-[11px] font-medium hover:border-gold">Download</a>
           <a data-cat-wa="${c.id}" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(catalogText(c))}" class="rounded-lg bg-[#1FA855] px-2 py-1.5 text-center text-[11px] font-medium text-white hover:bg-[#178F47]">WhatsApp</a>
