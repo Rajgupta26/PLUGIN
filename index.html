@@ -1256,8 +1256,7 @@ function wireActions(key) {
     const c = resultCanvas(key); if (!c) return;
     // Full size, so details such as an earring stay sharp when the photo is zoomed in
     const item = { id: 'c' + Date.now(), img: c.toDataURL('image/jpeg', .9), ...resultInfo(key), time: Date.now() };
-    state.catalog.unshift(item); saveCatalogItem(item);
-    state.added[key] = true; render(); toast('Added to Catalog');
+    openPieceForm(item, key);
   });
   host.querySelector('.act-wa').addEventListener('click', e => { const c = resultCanvas(key); if (c) shareImageFile(e, c, e.currentTarget.dataset.text); });
   host.querySelector('.act-dl').addEventListener('click', () => {
@@ -1437,6 +1436,45 @@ function renderSearch() {
   </div>`;
 }
 
+/* ============ Piece details (asked when adding to the catalog; every field optional) ============ */
+const PIECE_FIELDS = [['design', 'Design number', 'e.g. JX-1024'], ['name', 'Product name', ''], ['metal', 'Metal', 'e.g. Gold'],
+  ['colour', 'Colour', 'e.g. Yellow'], ['purity', 'Purity', 'e.g. 22K'], ['size', 'Size', 'e.g. 16 inch'], ['weight', 'Weight', 'e.g. 12.5 g']];
+const pieceForm = { item: null, key: null };
+// What the form starts with: details saved earlier, else what the inventory and chosen metal already say
+function pieceDefaults(c) {
+  if (c.info) return { ...c.info, name: c.title };
+  const inv = c.inv || {}, m = c.metal || '';
+  return { design: inv.sku || '', name: c.title, metal: inv.metal || (/gold/i.test(m) ? 'Gold' : ''),
+    colour: m.replace(/\s*gold$/i, ''), purity: inv.purity || '', size: '', weight: inv.weight || '' };
+}
+function openPieceForm(item, key) { Object.assign(pieceForm, { item, key }); openSheet('piece'); }
+function pieceFormHTML() {
+  const c = pieceForm.item, v = pieceDefaults(c), isNew = !state.catalog.includes(c);
+  const field = ([k, l, ph]) => `<label class="block text-xs ${k === 'name' ? 'sm:col-span-2' : ''}"><span class="mb-1 block text-ink/60">${l}</span>
+    <input data-piece="${k}" value="${esc(v[k] || '')}" placeholder="${esc(ph || (k === 'name' ? c.title : ''))}" maxlength="80" class="w-full rounded-lg border border-line bg-ivory px-3 py-2.5 text-sm outline-none focus:border-gold"/></label>`;
+  return sheetHead(isNew ? 'ADD TO CATALOG' : 'CATALOG', isNew ? 'Piece details' : 'Edit details') + `<form data-piece-form class="p-5">
+    <div class="flex gap-4"><img src="${c.img}" class="h-24 w-20 shrink-0 rounded-lg bg-ivory object-cover" alt=""/>
+      <p class="text-xs text-ink/60">All details are optional – fill in what you know and leave the rest blank. You can change them later from the catalog.</p></div>
+    <div class="mt-4 grid gap-3 sm:grid-cols-2">${PIECE_FIELDS.map(field).join('')}</div>
+    <div class="flex justify-end gap-2 pt-5"><button type="button" data-close class="rounded-lg border border-line px-4 py-2 text-sm">Cancel</button>
+      <button type="submit" class="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-white hover:bg-black">${isNew ? 'Add to Catalog' : 'Save'}</button></div></form>`;
+}
+function savePieceForm() {
+  const c = pieceForm.item, isNew = !state.catalog.includes(c), info = {};
+  $('sheetBody').querySelectorAll('[data-piece]').forEach(i => info[i.dataset.piece] = i.value.replace(/\s+/g, ' ').trim());
+  if (info.name) c.title = info.name;   // blank keeps the automatic name
+  delete info.name; c.info = info;
+  if (isNew) { state.catalog.unshift(c); state.added[pieceForm.key] = true; }
+  saveCatalogItem(c); closeSheet(); render(); toast(isNew ? 'Added to Catalog' : 'Details saved');
+}
+// Label/value pairs a piece shows, in form order, skipping blanks
+function pieceDetails(c) {
+  if (c.info) return PIECE_FIELDS.filter(([k]) => k !== 'name' && c.info[k]).map(([k, l]) => [l, c.info[k]]);
+  const inv = c.inv;
+  return (inv ? [['Purity', inv.purity], ['Metal', c.metal || inv.metal], ['Weight', inv.weight], ['Carat', inv.carat], ['Stones', inv.stones]]
+    : [['Metal', c.metal]]).filter(([, v]) => v && v !== '—');
+}
+
 /* ============ Raw + Catalog ============ */
 function renderRaw() {
   $('rawCount').textContent = state.raw.length ? state.raw.length : '';
@@ -1456,7 +1494,7 @@ function renderRaw() {
     </div>`).join('')}</div>`;
 }
 
-const catalogText = (c) => 'Jewelrex · ' + c.title + (c.inv ? ` (${c.inv.sku}) – ${c.inv.purity}, ${c.inv.weight}` : '');
+const catalogText = (c) => 'Jewelrex · ' + c.title + (pieceDetails(c).length ? ' – ' + pieceDetails(c).map(([l, v]) => `${l}: ${v}`).join(', ') : '');
 
 // Piece names. Photos from phones, WhatsApp and downloads often have code-like file names ("IMG_2034",
 // "55D6PMNKMAA26_1.webp", long ids). Those never become a piece's name: it gets its type and a number instead.
@@ -1482,28 +1520,6 @@ function pieceTitle(up, type) {
   if (!looksLikeCode(clean)) return clean.replace(/\b[a-z]/g, ch => ch.toUpperCase()).slice(0, 60);
   if (!up.autoName || up.autoName.type !== type) up.autoName = { type, title: nextName(typeLabel(type)) };
   return up.autoName.title;
-}
-
-// Rename a piece in place: Enter or leaving the field saves, Esc cancels
-function renamePiece(id) {
-  const c = state.catalog.find(x => x.id === id), el = document.querySelector(`[data-title="${id}"]`);
-  if (!c || !el) return;
-  const input = document.createElement('input');
-  input.value = c.title; input.maxLength = 80; input.setAttribute('aria-label', 'Name of this piece');
-  input.className = 'w-full min-w-0 rounded-lg border border-gold bg-white px-2 py-1 font-serif text-lg outline-none';
-  el.parentElement.replaceWith(input); input.focus(); input.select();
-  let done = false;
-  const finish = (save) => {
-    if (done) return; done = true;
-    const v = input.value.replace(/\s+/g, ' ').trim();
-    if (save && v && v !== c.title) { c.title = v; saveCatalogItem(c); toast('Name saved'); }
-    renderCatalog();
-  };
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') finish(true);
-    if (e.key === 'Escape') { e.stopPropagation(); finish(false); }
-  });
-  input.addEventListener('blur', () => finish(true));
 }
 
 // Phones: send the photo itself through the share sheet (WhatsApp and other apps). Elsewhere the wa.me link
@@ -1532,12 +1548,12 @@ function renderCatalog() {
         <span class="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 font-mono text-[10px] tracking-wider">${esc(c.kind.toUpperCase())}</span>
         <button data-cat-share="${c.id}" class="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/90 text-ink/70 shadow-sm hover:bg-white hover:text-ink" title="Share as a link" aria-label="Share ${esc(c.title)} as a link">${LINK_ICON}</button></div>
       <div class="p-4">
-        ${c.inv ? `<div class="font-mono text-[10px] text-gold-deep">${c.inv.sku}</div>` : ''}
+        ${(c.info ? c.info.design : c.inv && c.inv.sku) ? `<div class="font-mono text-[10px] text-gold-deep">${esc(c.info ? c.info.design : c.inv.sku)}</div>` : ''}
         <div class="flex items-start gap-1"><div data-title="${c.id}" class="min-w-0 flex-1 break-words font-serif text-lg leading-snug">${esc(c.title)}</div>
-          <button data-cat-rename="${c.id}" class="-mr-1 shrink-0 rounded-md p-1 text-ink/40 hover:bg-ivory hover:text-ink" title="Rename" aria-label="Rename ${esc(c.title)}">
+          <button data-cat-rename="${c.id}" class="-mr-1 shrink-0 rounded-md p-1 text-ink/40 hover:bg-ivory hover:text-ink" title="Edit details" aria-label="Edit details of ${esc(c.title)}">
             <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></div>
         ${c.sub ? `<div class="text-xs text-ink/50">${esc(c.sub)}</div>` : ''}
-        ${c.inv ? `<div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">${[c.inv.purity, c.metal || c.inv.metal, c.inv.weight, c.inv.carat !== '—' ? c.inv.carat : null].filter(Boolean).map(v => `<span class="rounded-full bg-ivory px-2 py-0.5">${esc(v)}</span>`).join('')}</div>` : (c.metal ? `<div class="mt-2 text-[11px]"><span class="rounded-full bg-ivory px-2 py-0.5">${esc(c.metal)}</span></div>` : '')}
+        ${pieceDetails(c).filter(([l]) => l !== 'Design number').length ? `<div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">${pieceDetails(c).filter(([l]) => l !== 'Design number').map(([l, v]) => `<span class="rounded-full bg-ivory px-2 py-0.5" title="${esc(l)}">${esc(v)}</span>`).join('')}</div>` : ''}
         <div class="mt-3 grid grid-cols-3 gap-1.5">
           <a href="${c.img}" download="jewelrex-${c.id}.jpg" class="rounded-lg border border-line px-2 py-1.5 text-center text-[11px] font-medium hover:border-gold">Download</a>
           <a data-cat-wa="${c.id}" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(catalogText(c))}" class="rounded-lg bg-[#1FA855] px-2 py-1.5 text-center text-[11px] font-medium text-white hover:bg-[#178F47]">WhatsApp</a>
@@ -1588,11 +1604,7 @@ function shareKind(c) {
   if (c.type) return typeLabel(c.type);
   return ['Ring', 'Necklace', 'Earrings', 'Bracelet', 'Set'].includes(c.kind) ? c.kind : '';
 }
-function shareDetails(c) {
-  const inv = c.inv;
-  return (inv ? [['Purity', inv.purity], ['Metal', c.metal || inv.metal], ['Weight', inv.weight], ['Carat', inv.carat], ['Stones', inv.stones]]
-    : [['Metal', c.metal]]).filter(([, v]) => v && v !== '—');
-}
+const shareDetails = (c) => pieceDetails(c).filter(([l]) => l !== 'Design number');
 
 // Uploads a JPEG of at most 1600 px (smaller, and without the original file's hidden metadata)
 async function sharePhoto(c) {
@@ -1622,7 +1634,7 @@ async function createShare() {
       while (next < items.length) { const i = next++; photos[i] = await sharePhoto(items[i]); shareUI.done++; shareProgress(); }
     }));
     const body = { title: shareUI.title, note: shareUI.note, business: profile.business, phone: shareUI.contact ? profile.phone : '',
-      items: items.map((c, i) => ({ title: c.title, kind: shareKind(c), sku: c.inv ? c.inv.sku : '', details: shareDetails(c), ...photos[i] })) };
+      items: items.map((c, i) => ({ title: c.title, kind: shareKind(c), sku: c.info ? c.info.design : c.inv ? c.inv.sku : '', details: shareDetails(c), ...photos[i] })) };
     const r = await api('POST', '/api/share', body);
     setShareSite(r.url);   // the server returns the link on the public address when it knows it
     const link = { id: r.id, key: r.key, title: body.title.trim() || 'Selected designs', count: items.length, created: Date.now() };
@@ -1872,6 +1884,9 @@ function renderSheet(view, kind) {
     body.innerHTML = shareSheetHTML();
     if (shareUI.status === 'busy') startDots(body.querySelector('.dot-loader'));
     if (shareUI.status === 'pick') syncSharePicks();
+  } else if (view === 'piece') {
+    body.innerHTML = pieceFormHTML();
+    body.querySelector('[data-piece="design"]').focus();
   } else if (view === 'profile') {
     const field = (k, l, type = 'text') => `<label class="block text-xs"><span class="mb-1 block text-ink/60">${l}</span><input data-pf="${k}" type="${type}" value="${esc(profile[k] || '')}" class="w-full rounded-lg border border-line bg-ivory px-3 py-2.5 text-sm outline-none focus:border-gold"/></label>`;
     body.innerHTML = sheetHead('ACCOUNT', 'Profile settings') + `<div class="grid gap-3 p-5 sm:grid-cols-2">
@@ -1931,6 +1946,7 @@ $('profileBtn').addEventListener('click', e => {
 document.addEventListener('click', e => { if (!e.target.closest('#profileMenu') && !e.target.closest('#profileBtn')) closeMenu(); });
 $('profileMenu').addEventListener('click', e => { const b = e.target.closest('[data-menu]'); if (!b) return; closeMenu(); openSheet(b.dataset.menu); });
 $('creditPill').addEventListener('click', () => openSheet('usage'));
+$('sheet').addEventListener('submit', e => { if (e.target.closest('[data-piece-form]')) { e.preventDefault(); savePieceForm(); } });
 $('sheet').addEventListener('click', async e => {
   if (e.target === $('sheet') || e.target.closest('[data-close]')) return closeSheet();
   const body = $('sheetBody');
@@ -2090,7 +2106,7 @@ $('catGrid').addEventListener('click', e => {
   const sh = e.target.closest('[data-cat-share]');
   if (sh) return openShare([sh.dataset.catShare]);
   const rn = e.target.closest('[data-cat-rename]');
-  if (rn) return renamePiece(rn.dataset.catRename);
+  if (rn) return openPieceForm(state.catalog.find(c => c.id === rn.dataset.catRename));
   const wa = e.target.closest('[data-cat-wa]');
   if (wa) return shareImageFile(e, document.querySelector(`[data-card="${wa.dataset.catWa}"] img`), catalogText(state.catalog.find(c => c.id === wa.dataset.catWa)));
   const b = e.target.closest('[data-cat-del]'); if (!b) return;
