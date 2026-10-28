@@ -209,7 +209,10 @@
 
     <!-- ================= BLEND ================= -->
     <section id="view-blend" class="hidden">
-      <div class="grid items-stretch gap-4 lg:grid-cols-[1fr_auto_1fr_auto_1.2fr]">
+      <div class="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)]">
+        <div class="space-y-4">
+        <!-- A + B =, signs centred on the two design boxes -->
+        <div class="grid items-center gap-4 lg:grid-cols-[1fr_auto_1fr_auto]">
         <div class="rounded-2xl border border-line bg-white p-5">
           <p class="mb-3 font-mono text-[10px] tracking-[.18em] text-ink/60"><span class="text-gold">A</span> · FIRST DESIGN</p>
           <div data-drop="blendA"></div>
@@ -220,6 +223,10 @@
           <div data-drop="blendB"></div>
         </div>
         <div class="grid place-items-center font-serif text-3xl text-gold">=</div>
+        </div>
+        <!-- Add to Catalog / WhatsApp / Download, under the two designs -->
+        <div class="rounded-2xl border border-line bg-white p-5"><div data-actions="blend" class="-mt-6"></div></div>
+        </div>
         <div class="flex flex-col rounded-2xl border border-line bg-white p-5">
           <div class="mb-3 flex items-center justify-between"><p class="font-mono text-[10px] tracking-[.18em] text-ink/60">NEW CREATION</p><span id="blendTag" class="rounded bg-ivory px-2 py-0.5 font-mono text-[10px] text-ink/50">—</span></div>
           <div id="blendBox" class="relative aspect-square overflow-hidden rounded-xl border border-line bg-ivory"></div>
@@ -228,12 +235,9 @@
             <option value="necklace">Necklace</option><option value="earrings">Pair of earrings</option><option value="ring">Ring</option>
             <option value="bracelet">Bracelet</option><option value="pendant">Pendant</option>
           </select>
-          <label class="mt-4 flex items-center justify-between font-mono text-[10px] tracking-[.18em] text-ink/50"><span>MORE OF A</span><span id="mixVal">50 / 50</span><span>MORE OF B</span></label>
-          <input id="mix" type="range" min="20" max="80" value="50" class="mt-1 w-full" />
           <button id="blendBtn" class="gold-grad mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-semibold text-ink transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50">Blend ✨</button>
         </div>
       </div>
-      <div class="mt-4 rounded-2xl border border-line bg-white p-5"><div data-actions="blend" class="-mt-6"></div></div>
     </section>
 
     <!-- ================= INVENTORY SEARCH ================= -->
@@ -1389,7 +1393,6 @@ function renderBlend() {
   const a = state.uploads.blendA, b = state.uploads.blendB, s = state.blend;
   $('blendBtn').disabled = !a || !b || s.status === 'loading';
   $('blendBtn').innerHTML = mini('blend', 'h-6 w-6') + ' Blend · 1 credit';
-  $('mixVal').textContent = `${100 - s.mix} / ${s.mix}`;
   $('blendKind').value = s.kind || 'necklace';
   $('blendTag').textContent = s.status === 'done' ? s.code : '—';
   const box = $('blendBox');
@@ -2050,7 +2053,6 @@ $('hfSave').addEventListener('click', () => {
   toast(v ? 'Token saved in this browser' : 'Token removed'); render();
 });
 
-$('mix').addEventListener('input', e => { state.blend.mix = +e.target.value; $('mixVal').textContent = `${100 - state.blend.mix} / ${state.blend.mix}`; });
 $('blendKind').addEventListener('change', e => { state.blend.kind = e.target.value; if (state.blend.status !== 'loading') { state.blend.status = 'idle'; state.added.blend = false; } render(); });
 $('blendBtn').addEventListener('click', async () => {
   if (stillBusy()) return;
