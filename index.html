@@ -378,7 +378,7 @@ const state = {
   uploads: { studio: null, blendA: null, blendB: null, search: null },
   type: 'necklace', modelId: 'maya',
   studio: { status: 'idle', kind: null, metal: 'original' },  // kind: 'enhance' | 'model'; status also 'error' (with msg)
-  blend: { status: 'idle', mix: 50 },
+  blend: { status: 'idle' },
   search: { status: 'idle' },
   added: { studio: false, blend: false },
   raw: [],
@@ -926,21 +926,36 @@ async function generateOnModel(up) {
 
 /* ============ Blend: AI designs one new piece inspired by both ============ */
 const KIND_NAMES = { necklace: 'necklace', earrings: 'pair of matching earrings', ring: 'ring', bracelet: 'bracelet', pendant: 'pendant on a fine chain' };
-function blendPrompt(kind, mix) {
+function blendPrompt(kind) {
   const k = KIND_NAMES[kind];
-  const weight = mix < 40 ? 'Base it mainly on image 1, with accents and details taken from image 2.'
-    : mix > 60 ? 'Base it mainly on image 2, with accents and details taken from image 1.'
-    : 'Take equally from both designs.';
-  return `Design one brand-new piece of fine jewellery: a ${k} that blends the design language of the two pieces in image 1 and image 2. ${weight} ` +
-    `Merge their motifs, shapes, stones, settings and metal into a single coherent, elegant, symmetrical and wearable ${k}. ` +
-    `Do not place the two pieces side by side or on top of each other – create one new original design. ` +
-    `Show only the new ${k}, complete and centred, on a plain pure white background, as a high-end jewellery catalogue product photo with soft studio lighting and sharp, realistic metal and gemstone detail.`;
+  return `Create a new jewellery design from the two reference photos on this sheet. The left panel is reference A and the right panel is reference B. ` +
+    `Make the finished product a ${k}. Use the left reference for the overall silhouette or construction. ` +
+    `Choose a distinctive visible motif, stone arrangement, or metalwork pattern from the right reference and rebuild it as an integral part of that silhouette. ` +
+    `If only one reference matches the requested type, use that reference for construction and adapt distinctive details from the other. Both influences should be recognisable in the new piece. ` +
+    `Replace the entire reference sheet with one centred catalogue photograph of the finished ${k} on a pure white background, with sharp gemstone and metal detail. ` +
+    `No reference panels, collage, overlapping source pieces, or reproduction of either source design.`;
 }
 
-async function generateBlend(a, b, kind, mix) {
-  const typeOf = (up) => (up.inv && up.inv.type) || 'blend';
-  const [pa, pb] = await Promise.all([pieceOnWhite(a, true, typeOf(a)), pieceOnWhite(b, true, typeOf(b))]);
-  const images = JSON.stringify([pa, pb]), prompt = blendPrompt(kind, mix);
+async function blendReferenceSheet(a, b) {
+  const references = await Promise.all([loadImg(a.img), loadImg(b.img)]);
+  // The Space sets the output aspect ratio from the first image. A square sheet gives both
+  // originals equal space and keeps the result square, independent of their aspect ratios.
+  const size = 1024, panelWidth = 480;
+  const sheet = canvasOf(size, size), ctx = sheet.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, size, size);
+  references.forEach((im, i) => {
+    const scale = Math.min(panelWidth / im.naturalWidth, (size - 32) / im.naturalHeight);
+    const width = im.naturalWidth * scale, height = im.naturalHeight * scale;
+    const center = (i + .5) * size / 2;
+    ctx.drawImage(im, center - width / 2, (size - height) / 2, width, height);
+  });
+  return sheet.toDataURL('image/jpeg', .94);
+}
+
+async function generateBlend(a, b, kind) {
+  const reference = await blendReferenceSheet(a, b);
+  const images = JSON.stringify([reference]), prompt = blendPrompt(kind);
   let out;
   if (testMode) { out = await generateDirect(images, prompt); testCharge('blend'); }
   else {
@@ -2071,13 +2086,13 @@ $('hfSave').addEventListener('click', () => {
 
 $('blendKind').addEventListener('change', e => { state.blend.kind = e.target.value; if (state.blend.status !== 'loading') { state.blend.status = 'idle'; state.added.blend = false; } render(); });
 $('blendBtn').addEventListener('click', async () => {
-  if (stillBusy()) return;
+  if (stillBusy() || !state.uploads.blendA || !state.uploads.blendB) return;
   if (!account) return toast('Billing server is offline – start it with: python3 server/app.py');
   if (account.available < 1) return openSheet('limit', 'blend');
   const s = state.blend, kind = s.kind || 'necklace';
   s.status = 'loading'; state.added.blend = false; render();
   try {
-    s.img = await withLoader($('blendBox'), 'model', () => generateBlend(state.uploads.blendA, state.uploads.blendB, kind, s.mix));
+    s.img = await withLoader($('blendBox'), 'model', () => generateBlend(state.uploads.blendA, state.uploads.blendB, kind));
     s.code = 'JX-NEW-' + Date.now().toString(36).slice(-5).toUpperCase();
     s.status = 'done'; render(); toast('New design created · 1 credit used');
   } catch (e) {
